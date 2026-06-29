@@ -941,6 +941,8 @@ function handleVoice(txt){
   busy=true;
   const low = txt.toLowerCase();
 
+  // Quiz: läuft eine Frage? → Antwort zuerst prüfen (vor allen anderen Befehlen)
+  if(quizPending){ checkQuizAnswer(txt); busy=false; return; }
   // Live-Gespräch per Sprache beenden
   if(liveMode && /(stopp|stop|beende|beenden|schluss|aufhören|aufhoeren)\b/.test(low)){
     liveMode=false; updateLiveBtn();
@@ -970,6 +972,30 @@ function handleVoice(txt){
   // Timer / Wecker (vor der Aufgaben-Erkennung)
   const tsec = matchTimer(low);
   if(tsec){ startTimer(tsec); return; }
+  // Quiz starten
+  if(/(quiz|rate ?spiel|frag mich was|stell mir eine frage|teste mein wissen)/.test(low)){
+    askQuiz(); busy=false; return;
+  }
+  // Schere, Stein, Papier
+  const rps = low.match(/\b(schere|stein|papier)\b/);
+  if(rps && /(schere|stein|papier|spiel)/.test(low)){ playRPS(rps[1]); busy=false; return; }
+  if(/schere.?stein.?papier|stein.?schere.?papier/.test(low)){ say('✊✋✌️ Sag „Schere", „Stein" oder „Papier" – und ich spiele gegen dich!'); busy=false; return; }
+  // Senso / Simon Ton-Memory-Spiel
+  if(/senso|simon|merk.?spiel|ton.?spiel|memory.?spiel|farben.?spiel/.test(low)){
+    openSenso(); busy=false; return;
+  }
+  // Zungenbrecher
+  if(/zungenbrecher|zungen brecher/.test(low)){
+    say('👅 '+ZUNGENBRECHER[Math.floor(Math.random()*ZUNGENBRECHER.length)]); busy=false; return;
+  }
+  // Motivation / Zitat
+  if(/(motivier|motivation|zitat|spruch|weisheit|inspirier|aufmunter)/.test(low)){
+    say('✨ '+ZITATE[Math.floor(Math.random()*ZITATE.length)]); busy=false; return;
+  }
+  // Fun-Fact
+  if(/(fun ?fact|interessante[sr]|etwas spannend|wusstest du|erzähl.*interessant|erzaehl.*interessant|krasse[sr] fakt|fakt\b)/.test(low)){
+    say('🤓 '+FACTS[Math.floor(Math.random()*FACTS.length)]); busy=false; return;
+  }
   // Pomodoro-Lerntimer (25 Min)
   if(/pomodoro|lern.?timer|fokus.?timer|konzentrations.?timer/.test(low)){
     startTimer(25*60); busy=false; return;
@@ -1025,6 +1051,9 @@ function handleVoice(txt){
   // Taschenrechner per Sprache
   const calc = matchMath(low);
   if(calc!=null){ say(calc.q+' = **'+calc.r+'**'); busy=false; return; }
+  // Musik abspielen ("Spiele ... von ...")
+  const song = matchPlayMusic(low, txt);
+  if(song){ playMusic(song); busy=false; return; }
   // Medien öffnen
   const media = matchMedia(low);
   if(media){ openMedia(media); return; }
@@ -1123,6 +1152,142 @@ function safeEval(expr){
   }
   while(ops.length) if(!apply())return null;
   return out.length===1?out[0]:null;
+}
+
+// ---- Senso / Simon: Ton-Memory-Spiel ----
+const SENSO_PADS = [
+  { hex:'#3ee07a', freq:329.63 },  // grün  E4
+  { hex:'#ff5c7a', freq:261.63 },  // rot   C4
+  { hex:'#ffb13e', freq:392.00 },  // gelb  G4
+  { hex:'#35c8ff', freq:220.00 },  // blau  A3
+];
+let sensoSeq=[], sensoStep=0, sensoBusy=false;
+function sensoTone(i, dur){
+  const a=ac(); if(!a) return; if(a.state==='suspended')a.resume();
+  const o=a.createOscillator(), g=a.createGain(), t=a.currentTime;
+  o.type='sine'; o.frequency.value=SENSO_PADS[i].freq;
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.18,t+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.4));
+  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+(dur||0.4)+0.05);
+}
+function sensoFlash(i){
+  const p=document.getElementById('senso'+i); if(!p) return;
+  p.style.filter='brightness(2.2)'; p.style.transform='scale(0.96)';
+  setTimeout(()=>{ p.style.filter=''; p.style.transform=''; }, 300);
+}
+function openSenso(){
+  if(document.getElementById('sensoOverlay')) { return; }
+  const ov=document.createElement('div'); ov.id='sensoOverlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:rgba(5,10,20,0.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);';
+  let pads='';
+  for(let i=0;i<4;i++) pads+='<div id="senso'+i+'" onclick="sensoTap('+i+')" style="background:'+SENSO_PADS[i].hex+';border-radius:18px;cursor:pointer;transition:all .12s;box-shadow:0 0 24px '+SENSO_PADS[i].hex+'66;"></div>';
+  ov.innerHTML =
+    '<div style="font-family:Orbitron,sans-serif;font-size:22px;font-weight:900;letter-spacing:3px;color:#eafcff;text-shadow:0 0 18px rgba(53,200,255,.5);">SENSO</div>'+
+    '<div id="sensoMsg" style="font-family:\'Share Tech Mono\',monospace;color:#5ff0ff;min-height:22px;">Tippe „Start"</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;width:min(80vw,320px);aspect-ratio:1;">'+pads+'</div>'+
+    '<div style="display:flex;gap:12px;">'+
+      '<button onclick="sensoStart()" style="font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:1px;color:#050a14;background:linear-gradient(135deg,#5ff0ff,#35c8ff);border:none;padding:11px 26px;border-radius:24px;cursor:pointer;">▶ START</button>'+
+      '<button onclick="closeSenso()" style="font-family:Orbitron,sans-serif;font-weight:700;color:#d8f3ff;background:rgba(20,40,66,.7);border:1px solid var(--border);padding:11px 22px;border-radius:24px;cursor:pointer;">Schliessen</button>'+
+    '</div>';
+  document.body.appendChild(ov);
+}
+function closeSenso(){ const o=document.getElementById('sensoOverlay'); if(o)o.remove(); sensoSeq=[]; sensoBusy=false; }
+function sensoMsg(t){ const m=document.getElementById('sensoMsg'); if(m)m.textContent=t; }
+function sensoStart(){ sensoSeq=[]; sensoStep=0; sensoNext(); }
+function sensoNext(){
+  sensoStep=0; sensoSeq.push(Math.floor(Math.random()*4));
+  sensoMsg('Runde '+sensoSeq.length+' – schau zu…'); sensoBusy=true;
+  let i=0;
+  const play=()=>{ if(i>=sensoSeq.length){ sensoBusy=false; sensoMsg('Du bist dran! ('+sensoSeq.length+')'); return; }
+    const idx=sensoSeq[i]; sensoFlash(idx); sensoTone(idx); i++; setTimeout(play,650); };
+  setTimeout(play,500);
+}
+function sensoTap(i){
+  if(sensoBusy || !sensoSeq.length) { sensoTone(i); sensoFlash(i); return; }
+  sensoFlash(i); sensoTone(i);
+  if(i===sensoSeq[sensoStep]){
+    sensoStep++;
+    if(sensoStep>=sensoSeq.length){ sensoBusy=true; sensoMsg('✅ Super! Nächste Runde…'); setTimeout(sensoNext,900); }
+  } else {
+    sensoBusy=true; sensoMsg('❌ Falsch! Du kamst bis Runde '+sensoSeq.length+'. „Start" für neu.');
+    alarmBeep(); sensoSeq=[];
+  }
+}
+
+// ---- Entertainment ----
+const ZUNGENBRECHER = [
+  'Fischers Fritz fischt frische Fische, frische Fische fischt Fischers Fritz.',
+  'Blaukraut bleibt Blaukraut und Brautkleid bleibt Brautkleid.',
+  'Der Cottbuser Postkutscher putzt den Cottbuser Postkutschkasten.',
+  'Zwischen zwei Zwetschgenzweigen zwitschern zwei Schwalben.',
+  'In Ulm, um Ulm und um Ulm herum.',
+  'Brautkleid bleibt Brautkleid und Blaukraut bleibt Blaukraut.',
+  'Wenn Fliegen hinter Fliegen fliegen, fliegen Fliegen Fliegen nach.'
+];
+const ZITATE = [
+  '„Der Weg ist das Ziel." – Konfuzius',
+  '„Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren." – Bertolt Brecht',
+  '„Es ist nie zu spät, das zu werden, was man hätte sein können." – George Eliot',
+  '„Erfolg ist die Summe richtiger Entscheidungen." Bleib dran, Kamil! 💪',
+  '„Große Dinge entstehen nie in der Komfortzone."',
+  '„Disziplin ist die Brücke zwischen Zielen und Erfolg." – Jim Rohn',
+  '„Du musst nicht großartig sein, um anzufangen. Aber du musst anfangen, um großartig zu werden."',
+  '„Jeder Experte war einmal ein Anfänger." 🚀'
+];
+const FACTS = [
+  'Honig verdirbt nie – man hat essbaren Honig in 3000 Jahre alten Pyramiden gefunden! 🍯',
+  'Ein Tag auf der Venus dauert länger als ein Jahr auf der Venus. 🪐',
+  'Oktopusse haben drei Herzen und blaues Blut. 🐙',
+  'Bananen sind botanisch gesehen Beeren – Erdbeeren aber nicht! 🍌',
+  'Der Eiffelturm kann im Sommer durch Hitze bis zu 15 cm wachsen. 🗼',
+  'Ein Wimpernschlag dauert etwa 100 Millisekunden. 👁️',
+  'Es gibt mehr Sterne im Universum als Sandkörner auf allen Stränden der Erde. ✨',
+  'Haie gab es schon vor den Bäumen – seit über 400 Millionen Jahren. 🦈',
+  'Das menschliche Gehirn verbraucht etwa 20 % deiner gesamten Energie. 🧠',
+  'Die Schweiz hat genug Atomschutzbunker für ihre gesamte Bevölkerung. 🇨🇭'
+];
+const RPS_BEAT = { schere:'papier', stein:'schere', papier:'stein' };
+const RPS_EMOJI = { schere:'✌️', stein:'✊', papier:'✋' };
+function playRPS(userChoice){
+  const choices = ['schere','stein','papier'];
+  const cpu = choices[Math.floor(Math.random()*3)];
+  let res;
+  if(cpu===userChoice) res='Unentschieden! 🤝';
+  else if(RPS_BEAT[userChoice]===cpu) res='Du gewinnst! 🎉';
+  else res='Ich gewinne! 🤖';
+  say('Du: '+RPS_EMOJI[userChoice]+' '+userChoice+'  vs.  Ich: '+RPS_EMOJI[cpu]+' '+cpu+'\n\n**'+res+'**');
+}
+// Quiz
+const QUIZ = [
+  {q:'Wie viele Kontinente gibt es?', a:['7','sieben']},
+  {q:'Welcher Planet ist der Sonne am nächsten?', a:['merkur']},
+  {q:'Wie heißt die Hauptstadt der Schweiz?', a:['bern']},
+  {q:'Wie viele Beine hat eine Spinne?', a:['8','acht']},
+  {q:'Welches ist das größte Säugetier der Welt?', a:['blauwal','wal']},
+  {q:'In welchem Jahr fiel die Berliner Mauer?', a:['1989']},
+  {q:'Wie viele Farben hat ein Regenbogen?', a:['7','sieben']},
+  {q:'Welches Element hat das chemische Symbol O?', a:['sauerstoff']},
+  {q:'Wie heißt der höchste Berg der Welt?', a:['mount everest','everest']},
+  {q:'Wie viele Minuten hat ein Tag?', a:['1440']},
+  {q:'Welche Sprache spricht man in Brasilien?', a:['portugiesisch']},
+  {q:'Wie viele Saiten hat eine Standard-Gitarre?', a:['6','sechs']}
+];
+let quizPending = null;
+function askQuiz(){
+  quizPending = QUIZ[Math.floor(Math.random()*QUIZ.length)];
+  switchView('chat'); sfxReceive();
+  addMsg('chat','🧠 **Quiz!** '+quizPending.q+'\n\n_(Sag oder tippe deine Antwort – oder „weiß nicht")_','jarvis');
+  speak('Quizfrage: '+quizPending.q);
+}
+function checkQuizAnswer(txt){
+  const low = txt.toLowerCase().trim();
+  const q = quizPending; quizPending = null;
+  if(/(weiß nicht|weiss nicht|keine ahnung|aufgeben|skip|überspringen|ueberspringen)/.test(low)){
+    say('Kein Problem! Die Antwort war: **'+q.a[0]+'**.'); return;
+  }
+  const correct = q.a.some(ans=>low.includes(ans));
+  if(correct) say('✅ **Richtig!** Top, Kamil! 🎉 Sag „Quiz" für die nächste Frage.');
+  else say('❌ Knapp daneben. Richtig wäre: **'+q.a[0]+'**. Sag „Quiz" für eine neue Frage!');
 }
 
 // ---- Trinkgeld-Rechner ----
@@ -1225,9 +1390,36 @@ async function doCurrency(c){
   }catch(e){ addMsg('chat','💱 Konnte den Wechselkurs gerade nicht laden. 😕','jarvis'); }
 }
 
+// ---- Musik abspielen (öffnet Spotify / YouTube mit dem Song) ----
+function matchPlayMusic(low, txt){
+  // "spiele/spiel/play/hör/höre/musik von ..." – aber NICHT eine bekannte Webseite (das macht openMedia)
+  if(!/\b(spiel|spiele|play|hör|hoere|höre|leg.*auf|spiel mir|spiel etwas|musik von)\b/.test(low)) return null;
+  if(/youtube|spotify|netflix|instagram|tiktok|whatsapp|gmail|amazon|news/.test(low)) return null;
+  // Song-Text rausziehen
+  let m = txt.match(/(?:spiel(?:e)?|play|hör(?:e)?|hoere|leg)\s+(?:mir\s+)?(?:bitte\s+)?(?:den song\s+|das lied\s+|die musik\s+|etwas musik von\s+|musik von\s+|den titel\s+)?(.+?)(?:\s+(?:ab|auf|bitte))?$/i);
+  let q = m && m[1] ? m[1].trim() : null;
+  // "spiele musik" / "spiel etwas" ohne Titel → Lieblings-/Entdecken-Playlist
+  if(!q || /^(musik|etwas|was|irgendwas|songs?|lieder?)$/i.test(q)) q = null;
+  return { q };
+}
+function playMusic(song){
+  switchView('chat'); sfxReceive();
+  if(!song.q){
+    const url='https://open.spotify.com/genre/0JQ5DAqbMKFCfObibaOZbv';   // Entdecken/Top
+    addMsg('chat','🎵 Ich öffne Musik zum Entdecken auf **Spotify**.\n[▶️ Spotify öffnen]('+url+')','jarvis');
+    speak('Ich öffne Spotify für dich.'); try{ window.open(url,'_blank'); }catch(e){} return;
+  }
+  const enc = encodeURIComponent(song.q);
+  const sp = 'https://open.spotify.com/search/'+enc;
+  const yt = 'https://www.youtube.com/results?search_query='+enc;
+  addMsg('chat','🎵 **'+escHtml(song.q)+'**\n[▶️ Auf Spotify]('+sp+')  ·  [▶️ Auf YouTube]('+yt+')','jarvis');
+  speak('Ich suche '+song.q+' für dich.');
+  try{ window.open(sp,'_blank'); }catch(e){}
+}
+
 // ---- Hilfe: Alle Sprachbefehle ----
 function jarvisHelp(){
-  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
+  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
   switchView('chat'); sfxReceive(); addMsg('chat', txt, 'jarvis');
   speak('Ich erkläre dir meine Befehle. Schau auf den Bildschirm.');
   busy=false;
