@@ -354,6 +354,23 @@
     .dash { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
     .chat { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
     .bar { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+
+    /* --- Handy-Performance: schwere Dauer-Effekte abschalten (verhindert Ruckeln/Springen) --- */
+    body::after { display: none; }              /* grosser rotierender Hintergrund-Ring – sehr GPU-lastig */
+    body::before { animation: none; }
+    .view::before { animation: none !important; opacity: .25; }  /* Scan-Sweep aus */
+    .view::after { animation: none; }            /* schwebendes Riesen-Emoji nicht animieren */
+    .msg { animation: scanin .4s ease !important; }  /* Nachrichten: nur Einblenden, kein Dauer-Schweben */
+    #dial { animation: none; }                   /* Wähler nicht dauernd schweben lassen */
+    .dcard, .tile, .scene, .bar input, .btn, #timerBadge, .msg { -webkit-backdrop-filter: none; backdrop-filter: none; }  /* teure Weichzeichner aus */
+    /* Glas-Look am Handy durch etwas kräftigere Füllung ersetzen, damit es trotzdem gut aussieht */
+    .dcard, .tile { background: linear-gradient(135deg, rgba(16,32,54,0.9), rgba(9,19,36,0.85)); }
+    .bar input, .btn { background: rgba(12,24,42,0.92); }
+  }
+  /* Wenn der Nutzer „weniger Bewegung" eingestellt hat: alle Endlos-Animationen stoppen */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+    body::after { display: none; }
   }
 
   /* ---------- Boot-Startbildschirm ---------- */
@@ -1911,6 +1928,7 @@ function applyRoutine(name){
 function delRoutine(name){ delete haRoutines[name]; localStorage.setItem('ha_routines',JSON.stringify(haRoutines)); renderRoutines(); }
 // Kamera-Live-Bilder laden (mit Token, daher als Blob)
 async function refreshCams(){
+  if(document.hidden) return;   // im Hintergrund nicht aktualisieren (spart Akku/Leistung)
   const imgs = document.querySelectorAll('img.cam'); if(!imgs.length) return;
   for(const img of imgs){
     const id = img.dataset.cam;
