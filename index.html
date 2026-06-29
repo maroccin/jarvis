@@ -27,7 +27,7 @@
     background:
       radial-gradient(900px 600px at 50% 40%, rgba(53,200,255,0.10), transparent 70%),
       radial-gradient(1200px 800px at 80% -10%, #0c2138 0%, var(--bg) 55%);
-    color: var(--text); display: flex; height: 100vh; overflow: hidden; position: relative;
+    color: var(--text); display: flex; height: 100vh; height: 100dvh; overflow: hidden; position: relative;
   }
   /* HUD-Gitter über dem ganzen Bildschirm */
   body::before {
@@ -246,6 +246,13 @@
   .wxmain { display:flex; align-items:center; gap:12px; margin-top:2px; }
   .wxico { font-size:38px; filter: drop-shadow(0 0 8px var(--blue-glow)); }
   .wxtemp { font-family:"Orbitron",sans-serif; font-size:30px; font-weight:700; color:#eafcff; }
+  #wxCard { cursor:pointer; }
+  .wxfc { display:none; margin-top:12px; border-top:1px solid rgba(53,200,255,0.12); padding-top:8px; }
+  #wxCard.open .wxfc { display:block; }
+  .wxrow { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 0; font-size:13px; }
+  .wxrow .d { color:var(--muted); width:46px; }
+  .wxrow .ic { font-size:18px; }
+  .wxrow .mx { color:#eafcff; font-weight:600; } .wxrow .mn { color:var(--muted); }
   #taskAdd { float:right; cursor:pointer; color:var(--cyan); font-size:16px; border:1px solid var(--border); border-radius:6px; width:22px; height:22px; line-height:20px; text-align:center; }
   #taskAdd:hover { background:rgba(53,200,255,0.2); }
   .taskItem { display:flex; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid rgba(53,200,255,0.08); font-size:14px; }
@@ -325,6 +332,10 @@
     .tiles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
     #settings { padding: 20px; }
     #bootReactor { width: 180px; height: 180px; }
+    /* Mehr Platz unten, damit am iPhone nichts abgeschnitten wird */
+    .dash { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+    .chat { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+    .bar { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   }
 
   /* ---------- Boot-Startbildschirm ---------- */
@@ -419,10 +430,11 @@
             <div class="dctime" id="clTime">--:--</div>
             <div class="dcsub" id="clDate">—</div>
           </div>
-          <div class="dcard" id="wxCard">
-            <div class="dctitle">WETTER</div>
+          <div class="dcard" id="wxCard" onclick="toggleForecast()">
+            <div class="dctitle">WETTER <span style="float:right;color:var(--muted)">▾</span></div>
             <div class="wxmain"><span class="wxico" id="wxIco">⏳</span><span class="wxtemp" id="wxTemp">—</span></div>
             <div class="dcsub" id="wxDesc">lädt…</div>
+            <div class="wxfc" id="wxForecast"></div>
           </div>
           <div class="dcard" id="taskCard">
             <div class="dctitle">📋 AUFGABEN &amp; RECHNUNGEN <span id="taskAdd" onclick="addTask()" title="Hinzufügen">＋</span></div>
@@ -1443,12 +1455,26 @@ function briefing(){
   const text = parts.join(' ');
   switchView('chat'); sfxReceive(); addMsg('chat', text, 'jarvis'); speak(text);
 }
+let wxDaily = null;
 async function loadWeather(lat,lon){
   try{
-    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&timezone=auto');
-    const j=await r.json(); if(j.current){ setWx(j.current.weather_code, j.current.temperature_2m); localStorage.setItem('wx_loc',lat+','+lon); }
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto');
+    const j=await r.json();
+    if(j.current){ setWx(j.current.weather_code, j.current.temperature_2m); localStorage.setItem('wx_loc',lat+','+lon); }
+    if(j.daily){ wxDaily = j.daily; renderForecast(); }
   }catch(e){ const d=el('#wxDesc'); if(d) d.textContent='Wetter nicht verfügbar'; }
 }
+function renderForecast(){
+  const box=el('#wxForecast'); if(!box || !wxDaily) return;
+  const days = wxDaily.time||[]; let html='';
+  for(let i=0;i<days.length;i++){
+    const w = WX[wxDaily.weather_code[i]]||['🌡️',''];
+    const lbl = i===0 ? 'Heute' : new Date(days[i]).toLocaleDateString('de-CH',{weekday:'short'});
+    html += '<div class="wxrow"><span class="d">'+lbl+'</span><span class="ic">'+w[0]+'</span><span><span class="mx">'+Math.round(wxDaily.temperature_2m_max[i])+'°</span> <span class="mn">'+Math.round(wxDaily.temperature_2m_min[i])+'°</span></span></div>';
+  }
+  box.innerHTML = html;
+}
+function toggleForecast(){ const c=el('#wxCard'); if(c){ c.classList.toggle('open'); sfxSwitch(); } }
 function initWeather(){
   const saved=localStorage.getItem('wx_loc');
   const fb=()=>{ if(saved){ const p=saved.split(','); loadWeather(p[0],p[1]); } else loadWeather(47.37,8.54); }; // Fallback: Zürich
