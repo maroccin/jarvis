@@ -255,6 +255,26 @@
   /* ---- Dashboard-Karten (Uhr/Wetter/Aufgaben) ---- */
   .dashgrid { display:grid; grid-template-columns: 1fr 1fr 1.4fr; gap:14px; margin-bottom:22px; }
   @media (max-width:760px){ .dashgrid { grid-template-columns: 1fr; } }
+  /* Kalender-Karte */
+  .calgrid { display:grid; grid-template-columns: repeat(7,1fr); gap:3px; margin-top:8px; }
+  .calgrid .cwd { text-align:center; font-size:10px; color:var(--muted); font-family:"Share Tech Mono",monospace; padding-bottom:2px; }
+  .calgrid .cd { text-align:center; font-size:12px; padding:5px 0; border-radius:6px; color:var(--text); position:relative; }
+  .calgrid .cd.muted { color:rgba(111,147,184,0.35); }
+  .calgrid .cd.today { background:linear-gradient(135deg,var(--cyan),var(--blue)); color:#04161f; font-weight:700; }
+  .calgrid .cd.due::after { content:""; position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:4px; height:4px; border-radius:50%; background:var(--amber); }
+  .calgrid .cd.today.due::after { background:#04161f; }
+  /* Meldungen */
+  .alert { display:flex; align-items:flex-start; gap:8px; font-size:13px; padding:6px 0; border-bottom:1px solid rgba(53,200,255,0.10); line-height:1.35; }
+  .alert:last-child { border-bottom:none; }
+  /* Klima */
+  .climrow { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid rgba(53,200,255,0.10); }
+  .climrow:last-child { border-bottom:none; }
+  .climrow .cname { flex:1; font-size:13px; }
+  .climrow .ctemp { font-family:"Orbitron",sans-serif; font-size:18px; font-weight:700; color:var(--cyan); }
+  .climrow .cbtn { width:30px; height:30px; border-radius:8px; border:1px solid var(--border); background:var(--panel2); color:var(--text); cursor:pointer; font-size:15px; }
+  /* Kamera */
+  #camBox img { width:100%; border-radius:10px; display:block; margin-top:8px; background:#03060d; min-height:120px; object-fit:cover; }
+  .dcMuted { font-size:12px; color:var(--muted); margin-top:8px; line-height:1.4; }
   .dcard { background: linear-gradient(135deg, rgba(14,30,52,0.6), rgba(8,18,34,0.45)); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     border:1px solid var(--border); border-radius:14px; padding:16px 18px; position:relative; overflow:hidden;
     box-shadow: 0 0 20px rgba(53,200,255,0.08), inset 0 0 24px rgba(53,200,255,0.04); }
@@ -496,6 +516,22 @@
           <div class="dcard" id="taskCard">
             <div class="dctitle">📋 AUFGABEN &amp; RECHNUNGEN <span id="taskAdd" onclick="addTask()" title="Hinzufügen">＋</span></div>
             <div id="taskList"></div>
+          </div>
+          <div class="dcard" id="calCard">
+            <div class="dctitle">📅 KALENDER <span id="calMonth" style="float:right;color:var(--muted);font-weight:400;"></span></div>
+            <div id="calGrid" class="calgrid"></div>
+          </div>
+          <div class="dcard" id="alertCard">
+            <div class="dctitle">🔔 MELDUNGEN</div>
+            <div id="alertList"></div>
+          </div>
+          <div class="dcard" id="climateCard">
+            <div class="dctitle">🌡️ KLIMA &amp; HEIZUNG</div>
+            <div id="climateBox"></div>
+          </div>
+          <div class="dcard" id="camCard">
+            <div class="dctitle">📷 KAMERA <span id="camName" style="float:right;color:var(--muted);font-weight:400;"></span></div>
+            <div id="camBox"></div>
           </div>
         </div>
         <div class="scene-row">
@@ -2109,9 +2145,13 @@ async function haLoad(){
     const arr = await r.json();
     haEntities = {};
     arr.forEach(e=>{ const dom=e.entity_id.split('.')[0];
-      if(HA_DOMAINS[dom]) haEntities[e.entity_id] = { name:(e.attributes&&e.attributes.friendly_name)||e.entity_id, state:e.state, domain:dom };
+      if(HA_DOMAINS[dom]){
+        const o = { name:(e.attributes&&e.attributes.friendly_name)||e.entity_id, state:e.state, domain:dom };
+        if(dom==='climate' && e.attributes){ o.temp = e.attributes.current_temperature; o.target = e.attributes.temperature; }
+        haEntities[e.entity_id] = o;
+      }
     });
-    renderHome(); renderRoutines();
+    renderHome(); renderRoutines(); renderDash();
     return Object.keys(haEntities).length;
   }catch(e){ haStatus('❌ Verbindung fehlgeschlagen: '+e.message); throw e; }
 }
@@ -2384,7 +2424,61 @@ function renderTasks(){
     const c=document.createElement('div'); c.className='taskEmpty'; c.style.cursor='pointer'; c.style.color='var(--cyan)';
     c.textContent='🧹 Erledigte entfernen'; c.onclick=clearDoneTasks; box.appendChild(c);
   }
+  renderCalendar(); renderAlerts();   // Dashboard-Karten mit aktualisieren
 }
+// ---- Dashboard-Karten: Kalender, Meldungen, Klima, Kamera ----
+function renderCalendar(){
+  const grid=el('#calGrid'), mlbl=el('#calMonth'); if(!grid) return;
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  if(mlbl) mlbl.textContent = now.toLocaleDateString('de-CH',{month:'long',year:'numeric'});
+  const start=(new Date(y,m,1).getDay()+6)%7;   // Montag = 0
+  const days=new Date(y,m+1,0).getDate();
+  const dueSet=new Set(tasks.filter(t=>!t.done&&t.due).map(t=>t.due));
+  const todayStr=now.toISOString().slice(0,10);
+  let html=['Mo','Di','Mi','Do','Fr','Sa','So'].map(d=>'<div class="cwd">'+d+'</div>').join('');
+  for(let i=0;i<start;i++) html+='<div class="cd muted"></div>';
+  for(let d=1;d<=days;d++){
+    const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    let cls='cd'; if(ds===todayStr)cls+=' today'; if(dueSet.has(ds))cls+=' due';
+    html+='<div class="'+cls+'">'+d+'</div>';
+  }
+  grid.innerHTML=html;
+}
+function renderAlerts(){
+  const box=el('#alertList'); if(!box) return;
+  const items=[]; const todayStr=new Date().toISOString().slice(0,10);
+  tasks.filter(t=>!t.done&&t.due&&t.due<=todayStr).forEach(t=>items.push('⚠️ Fällig: '+escHtml(t.text)));
+  let onN=0;
+  for(const id in haEntities){ const e=haEntities[id]; if((e.domain==='light'||e.domain==='switch')&&haIsOn(e)) onN++; }
+  for(const id in hueLights){ if(hueLights[id].on) onN++; }
+  if(onN) items.push('💡 '+onN+' Lampe(n)/Gerät(e) sind an');
+  if(timerEnd) items.push('⏱️ Timer läuft – noch '+fmtTimer(Math.max(0,Math.round((timerEnd-Date.now())/1000))));
+  if(wxNow && /Regen|Gewitter|Schnee|Schauer/.test(wxNow.desc)) items.push('🌧️ '+wxNow.desc+' – denk an Schirm/Jacke');
+  const openN=tasks.filter(t=>!t.done).length;
+  if(openN && !items.some(x=>x.includes('Fällig'))) items.push('📋 '+openN+' offene Aufgabe'+(openN>1?'n':''));
+  if(!items.length) items.push('✅ Alles ruhig – nichts Dringendes.');
+  box.innerHTML=items.map(t=>'<div class="alert">'+t+'</div>').join('');
+}
+function renderClimateCard(){
+  const box=el('#climateBox'); if(!box) return;
+  const ids=Object.keys(haEntities).filter(id=>haEntities[id].domain==='climate');
+  if(!ids.length){ box.innerHTML='<div class="dcMuted">Keine Klimageräte/Heizung verbunden. Über Home Assistant (⚙️ Einstellungen) hinzufügen.</div>'; return; }
+  box.innerHTML=ids.map(id=>{ const e=haEntities[id]; const on=haIsOn(e);
+    const temp = e.temp!=null ? e.temp+'°' : (on?'An':'Aus');
+    return '<div class="climrow"><span class="cname">'+escHtml(e.name)+(e.target!=null?' <span style="color:var(--muted);font-size:11px;">Ziel '+e.target+'°</span>':'')+'</span>'+
+      '<span class="ctemp">'+temp+'</span>'+
+      '<button class="cbtn" onclick="haToggle(\''+id+'\');setTimeout(renderClimateCard,400)" title="An/Aus">⏻</button></div>';
+  }).join('');
+}
+function renderCamCard(){
+  const box=el('#camBox'), nm=el('#camName'); if(!box) return;
+  const ids=Object.keys(haEntities).filter(id=>haEntities[id].domain==='camera');
+  if(!ids.length){ box.innerHTML='<div class="dcMuted">Keine Kamera verbunden. Über Home Assistant (⚙️ Einstellungen) hinzufügen.</div>'; if(nm)nm.textContent=''; return; }
+  const id=ids[0]; if(nm) nm.textContent=haEntities[id].name;
+  box.innerHTML='<img class="cam" data-cam="'+id+'" alt="Kamera-Bild">';
+  refreshCams();
+}
+function renderDash(){ renderCalendar(); renderAlerts(); renderClimateCard(); renderCamCard(); }
 function clearDoneTasks(){ tasks = tasks.filter(t=>!t.done); saveTasks(); renderTasks(); }
 function addTask(){
   const text = prompt('Aufgabe oder Rechnung:'); if(!text) return;
@@ -2461,8 +2555,9 @@ function alarmTimer(){
 buildDial(); renderHome(); renderScenes(); updateStatus();
 window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
-updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips();   // Dashboard
+updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();   // Dashboard
 setInterval(renderChips, 30*60*1000);   // Schnell-Buttons an Tageszeit anpassen (halbstündlich)
+setInterval(renderAlerts, 60*1000);     // Meldungen aktuell halten (Timer/Lampen/Wetter)
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
 if(haToken) haLoad();          // Home-Assistant-Geräte laden
