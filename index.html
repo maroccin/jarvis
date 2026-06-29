@@ -226,6 +226,8 @@
   .btn { width: 48px; height: 48px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: var(--text); font-size: 19px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .15s; }
   .btn:hover { border-color: var(--cyan); background: rgba(53,200,255,0.15); box-shadow:0 0 16px rgba(53,200,255,0.25); }
   .sendb { background: linear-gradient(135deg, var(--cyan), var(--blue)); border-color: var(--cyan); color: #04161f; box-shadow:0 0 18px rgba(53,200,255,0.4); }
+  /* Mikrofon-Button grösser & auffälliger (wichtigste Sprach-Aktion) */
+  .mic { width: 58px; height: 58px; font-size: 24px; border-color: var(--cyan); box-shadow: 0 0 16px rgba(53,200,255,0.3); }
   .mic.listening { background: var(--red); border-color: var(--red); animation: micpulse 1s infinite; }
   @keyframes micpulse { 0%,100%{box-shadow:0 0 0 0 rgba(255,92,122,0.5);} 50%{box-shadow:0 0 0 10px rgba(255,92,122,0);} }
   .typing span { display:inline-block; width:7px; height:7px; border-radius:50%; background: var(--blue); margin-right:4px; animation: blink 1.2s infinite; }
@@ -347,6 +349,7 @@
     .bar { padding: 10px 12px 14px; }
     .bar input { padding: 12px 14px; }
     .btn { width: 46px; height: 46px; }
+    .mic { width: 56px; height: 56px; font-size: 23px; }
     .tiles { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
     #settings { padding: 20px; }
     #bootReactor { width: 180px; height: 180px; }
@@ -1143,6 +1146,9 @@ function handleVoice(txt){
   // Taschenrechner per Sprache
   const calc = matchMath(low);
   if(calc!=null){ say(calc.q+' = **'+calc.r+'**'); busy=false; return; }
+  // Video zeigen ("Zeig mir ein Video über/von …")
+  const vm = txt.match(/(?:zeig(?:e)?\s+mir\s+|spiel(?:e)?\s+|starte\s+)(?:ein\s+)?video\s+(?:über|ueber|von|mit|zu)\s+(.+)/i);
+  if(vm && vm[1]){ openVideo(vm[1].trim()); addMsg('chat','🎬 Video: **'+escHtml(vm[1].trim())+'**','jarvis'); busy=false; return; }
   // Musik abspielen ("Spiele ... von ...")
   const song = matchPlayMusic(low, txt);
   if(song){ playMusic(song); busy=false; return; }
@@ -1495,23 +1501,106 @@ function matchPlayMusic(low, txt){
   return { q };
 }
 function playMusic(song){
-  switchView('chat'); sfxReceive();
-  if(!song.q){
-    const url='https://open.spotify.com/genre/0JQ5DAqbMKFCfObibaOZbv';   // Entdecken/Top
-    addMsg('chat','🎵 Ich öffne Musik zum Entdecken auf **Spotify**.\n[▶️ Spotify öffnen]('+url+')','jarvis');
-    speak('Ich öffne Spotify für dich.'); try{ window.open(url,'_blank'); }catch(e){} return;
-  }
-  const enc = encodeURIComponent(song.q);
+  const q = song.q || 'lofi hip hop radio beats to relax';
+  openVideo(q, song.q ? null : 'Entspannungs-Musik');
+  const enc = encodeURIComponent(q);
   const sp = 'https://open.spotify.com/search/'+enc;
-  const yt = 'https://www.youtube.com/results?search_query='+enc;
-  addMsg('chat','🎵 **'+escHtml(song.q)+'**\n[▶️ Auf Spotify]('+sp+')  ·  [▶️ Auf YouTube]('+yt+')','jarvis');
-  speak('Ich suche '+song.q+' für dich.');
-  try{ window.open(sp,'_blank'); }catch(e){}
+  addMsg('chat','🎵 Spiele **'+escHtml(song.q||'Musik zum Entspannen')+'** direkt hier.\n_(Lieber Spotify? [Hier öffnen]('+sp+'))_','jarvis');
+  speak('Ich spiele '+(song.q||'Musik')+'.');
 }
+
+// ---- Eingebetteter Video-/Musik-Player (YouTube IN Jarvis, kein neuer Tab) ----
+function ytVideoId(s){
+  const m = s.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{11})/) || s.match(/^([\w-]{11})$/);
+  return m ? m[1] : null;
+}
+function openVideo(query, titleOverride){
+  closeVideo();
+  const vid = ytVideoId(query.trim());                 // direkter Link/ID → sauber einbetten
+  const embed = vid ? 'https://www.youtube.com/embed/'+vid+'?autoplay=1&rel=0&modestbranding=1'
+                    : 'https://www.youtube.com/embed?listType=search&list='+encodeURIComponent(query)+'&autoplay=1&rel=0&modestbranding=1';
+  const q = encodeURIComponent(query);
+  const ov = document.createElement('div'); ov.id='videoOverlay';
+  ov.style.cssText='position:fixed;inset:0;z-index:210;display:flex;flex-direction:column;background:rgba(3,7,14,0.97);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
+  const btn='font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:.5px;border:1px solid var(--border);background:rgba(20,40,66,.8);color:#d8f3ff;padding:9px 16px;border-radius:22px;cursor:pointer;font-size:13px;white-space:nowrap;';
+  ov.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;">'+
+      '<span style="font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:1px;color:#eafcff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 0 14px rgba(53,200,255,.4);">🎬 '+escHtml(titleOverride||query)+'</span>'+
+      '<button style="'+btn+'" onclick="window.open(\'https://www.youtube.com/results?search_query='+q+'\',\'_blank\')">↗ YouTube</button>'+
+      '<button style="'+btn+'background:linear-gradient(135deg,#5ff0ff,#35c8ff);color:#04161f;border-color:var(--cyan);" onclick="closeVideo()">✕ Schliessen</button>'+
+    '</div>'+
+    '<div style="flex:1;position:relative;background:#000;">'+
+      '<iframe id="ytFrame" src="'+embed+'" '+
+      'style="position:absolute;inset:0;width:100%;height:100%;border:none;" '+
+      'allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>'+
+    '</div>';
+  document.body.appendChild(ov);
+  sfxReceive();
+}
+function closeVideo(){ const o=document.getElementById('videoOverlay'); if(o) o.remove(); }
+
+// ---- Dynamische Schnell-Buttons je nach Tageszeit ----
+function renderChips(){
+  const box = el('#chips-chat'); if(!box) return;
+  const h = new Date().getHours();
+  let chips;
+  if(h>=5 && h<11){          // Morgens
+    chips = [
+      ['☕ Guten Morgen', "briefing()"],
+      ['🌦️ Wetter', "switchView('home');toggleForecast()"],
+      ['📅 Termine', "handleVoice('lies meine aufgaben vor')"],
+      ['🍳 Frühstücks-Idee', "ask('chat','Gib mir eine schnelle, gesunde Frühstücksidee.')"],
+      ['📰 News', "openMedia({url:'https://news.google.com/home?hl=de',label:'Google News'})"]
+    ];
+  } else if(h>=11 && h<17){  // Mittags/Nachmittags
+    chips = [
+      ['🔔 Was steht an?', "briefing()"],
+      ['🍽️ Restaurant', "openPlaces('Restaurant')"],
+      ['🧮 Kurz rechnen', "el('[data-input]',document.getElementById('view-chat')).focus()"],
+      ['🎵 Musik', "playMusic({q:null})"],
+      ['✨ Überrasch mich', "handleVoice('erzähl mir einen fun fact')"]
+    ];
+  } else if(h>=17 && h<22){  // Abends
+    chips = [
+      ['🍝 Rezept', "ask('chat','Was koche ich heute Abend? Gib mir ein schnelles Rezept mit dem, was man meist zuhause hat.')"],
+      ['🎬 Film', "openVideo('neue filme trailer 2026','Film & Trailer')"],
+      ['🎵 Musik', "playMusic({q:null})"],
+      ['😴 Schlafmodus', "sleepMode()"],
+      ['🌙 Wetter morgen', "switchView('home');toggleForecast()"]
+    ];
+  } else {                   // Nachts
+    chips = [
+      ['😴 Schlafmodus', "sleepMode()"],
+      ['🎵 Entspann-Musik', "playMusic({q:'entspannende musik zum einschlafen'})"],
+      ['🔕 Licht aus', "huePreset({on:false})"],
+      ['🌅 Wecker stellen', "el('[data-input]',document.getElementById('view-chat')).focus()"]
+    ];
+  }
+  box.innerHTML = chips.map(c=>'<div class="chip" onclick="'+c[1].replace(/"/g,'&quot;')+'">'+c[0]+'</div>').join('');
+}
+// Schlafmodus: Lampen aus + ruhige Bestätigung
+function sleepMode(){
+  switchView('chat'); sfxReceive();
+  try{ huePreset({on:false}); }catch(e){}
+  // auch Home-Assistant-Lampen/Steckdosen aus
+  try{ for(const id in haEntities){ const e=haEntities[id]; if((e.domain==='light'||e.domain==='switch')&&haIsOn(e)) haSet(id,false); } }catch(e){}
+  addMsg('chat','😴 **Schlafmodus aktiviert.** Lichter aus, Systeme leise. Gute Nacht, Kamil. 🌙','jarvis');
+  speak('Schlafmodus aktiviert. Gute Nacht, Kamil.');
+}
+// Zufällige Begrüssungen
+const GREETINGS = [
+  'Systeme online. Willkommen zurück, Kamil.',
+  'Alle Module einsatzbereit. Schön, dich wiederzusehen.',
+  'Hochgefahren und bereit. Was machen wir heute, Kamil?',
+  'Jarvis ist online. Schön, dass du da bist.',
+  'Alle Systeme grün. Ich stehe bereit.',
+  'Reaktor stabil, Module aktiv. Leg los, Kamil.'
+];
+function randGreeting(){ return GREETINGS[Math.floor(Math.random()*GREETINGS.length)]; }
 
 // ---- Hilfe: Alle Sprachbefehle ----
 function jarvisHelp(){
-  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n🎛️ **Sprach-Modus** – „Diktat-Modus" (nur schreiben) · „Direkt-Modus" (sofort ausführen)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
+  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🎬 Video – „Zeig mir ein Video über Weltraum" (läuft IN Jarvis)\n😴 „Schlafmodus" – Lichter aus & gute Nacht\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n🎛️ **Sprach-Modus** – „Diktat-Modus" (nur schreiben) · „Direkt-Modus" (sofort ausführen)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
   switchView('chat'); sfxReceive(); addMsg('chat', txt, 'jarvis');
   speak('Ich erkläre dir meine Befehle. Schau auf den Bildschirm.');
   busy=false;
@@ -2206,7 +2295,12 @@ function alarmTimer(){
 // ---- Boot-Startbildschirm ----
 (function(){
   const bootEl = el('#boot'), bs = el('#bootStatus');
-  const msgs = ['Initialisiere Systeme…','Lade Module…','Verbinde Sensoren…','Aktiviere Sprachkern…','Systeme bereit.'];
+  const _boots = [
+    ['Initialisiere Systeme…','Lade Module…','Verbinde Sensoren…','Aktiviere Sprachkern…','Systeme bereit.'],
+    ['Reaktor hochfahren…','Kalibriere Module…','Netzwerk verbunden…','KI-Kern aktiv…','Willkommen zurück.'],
+    ['Energie aufbauen…','Lade Schnittstellen…','Synchronisiere…','Bereit für dich…','Alle Systeme grün.']
+  ];
+  const msgs = _boots[Math.floor(Math.random()*_boots.length)];
   let i=0;
   const tmr = setInterval(()=>{ i++; if(i<msgs.length && bs) bs.textContent = msgs[i]; }, 500);
   const hide = ()=>{ clearInterval(tmr); if(bootEl){ bootEl.classList.add('hide'); setTimeout(()=>{ bootEl.style.display='none'; }, 900); } };
@@ -2219,7 +2313,8 @@ function alarmTimer(){
 buildDial(); renderHome(); renderScenes(); updateStatus();
 window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
-updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines();   // Dashboard
+updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips();   // Dashboard
+setInterval(renderChips, 30*60*1000);   // Schnell-Buttons an Tageszeit anpassen (halbstündlich)
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
 if(haToken) haLoad();          // Home-Assistant-Geräte laden
@@ -2227,7 +2322,7 @@ setInterval(refreshCams, 4000);   // Kamera-Live-Bilder aktualisieren
 const _h = new Date().getHours();
 const _gruss = _h<5?'Gute Nacht':_h<11?'Guten Morgen':_h<18?'Hallo':_h<22?'Guten Abend':'Schönen späten Abend';
 if(apiKey){
-  addMsg('chat', _gruss+' Kamil 👋 Systeme online. Ich bin **Jarvis**.\n\nFrag mich was – per Text oder 🎙️ Live-Gespräch. Sag **„Was kannst du?"** für alle Befehle.','jarvis');
+  addMsg('chat', _gruss+' Kamil 👋 '+randGreeting()+'\n\nFrag mich was – per Text oder 🎙️ Live-Gespräch. Sag **„Was kannst du?"** für alle Befehle.','jarvis');
   // Auto-Morgenbriefing: einmal pro Tag beim ersten Öffnen am Morgen (6–11 Uhr)
   const _todayKey = 'jarvis_briefed_'+new Date().toISOString().slice(0,10);
   if(_h>=6 && _h<11 && !localStorage.getItem(_todayKey)){
