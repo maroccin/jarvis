@@ -596,6 +596,11 @@
         <select id="voiceInput" style="flex:1;"></select>
         <button class="close" onclick="testVoice()">🔊 Test</button>
       </div>
+      <label>🎙️ Sprach-Modus (was passiert, wenn du sprichst)</label>
+      <select id="voiceModeInput">
+        <option value="send">Direkt – sofort ausführen / absenden</option>
+        <option value="dictate">Diktat – nur ins Feld schreiben, du sendest selbst</option>
+      </select>
       <p style="margin-top:14px;font-size:12px;">Noch keinen Key? Hol ihn auf <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</p>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
@@ -907,12 +912,24 @@ function speak(text){
 // ---- Spracheingabe & Sprachsteuerung ----
 // recogState: 'idle' | 'starting' | 'listening'  – echter Zustand, nur über Events gesetzt
 let recog=null, liveMode=false, busy=false, micOn=false, recogState='idle', gotResult=false, startGuard=null;
+let voiceMode = localStorage.getItem('jarvis_voicemode') || 'send';   // 'send' = direkt, 'dictate' = ins Feld
 const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){
   recog=new SR(); recog.lang='de-DE'; recog.interimResults=false; recog.maxAlternatives=1;
   // Aufnahme hat WIRKLICH begonnen → erst jetzt rot anzeigen
   recog.onstart=()=>{ recogState='listening'; gotResult=false; clearTimeout(startGuard); micVisual(true); };
-  recog.onresult=(e)=>{ gotResult=true; const txt=e.results[e.results.length-1][0].transcript.trim(); micVisual(false); if(txt) handleVoice(txt); };
+  recog.onresult=(e)=>{
+    gotResult=true; const txt=e.results[e.results.length-1][0].transcript.trim(); micVisual(false);
+    if(!txt){ busy=false; return; }
+    if(voiceMode==='dictate' && !liveMode){
+      // Diktat: Text ins Feld schreiben, NICHT absenden
+      const box=inputBox(currentView);
+      if(box){ box.value = (box.value ? box.value+' ' : '') + txt; box.focus(); }
+      busy=false;
+    } else {
+      handleVoice(txt);
+    }
+  };
   recog.onend=()=>{
     const wasListening = recogState==='listening';
     recogState='idle'; micVisual(false);
@@ -1011,6 +1028,13 @@ function handleVoice(txt){
 
   // Quiz: läuft eine Frage? → Antwort zuerst prüfen (vor allen anderen Befehlen)
   if(quizPending){ checkQuizAnswer(txt); busy=false; return; }
+  // Sprach-Modus per Sprache umschalten
+  if(/(diktier ?modus|diktat ?modus|schreib ?modus|nur schreiben|ins feld schreiben)/.test(low)){
+    voiceMode='dictate'; localStorage.setItem('jarvis_voicemode','dictate'); say('Diktat-Modus an. Ich schreibe nur ins Feld – du sendest selbst.'); busy=false; return;
+  }
+  if(/(direkt ?modus|sende ?modus|sofort.?modus|direkt absenden|automatisch senden)/.test(low)){
+    voiceMode='send'; localStorage.setItem('jarvis_voicemode','send'); say('Direkt-Modus an. Ich führe gesprochene Befehle sofort aus.'); busy=false; return;
+  }
   // Live-Gespräch per Sprache beenden
   if(liveMode && /(stopp|stop|beende|beenden|schluss|aufhören|aufhoeren)\b/.test(low)){
     liveMode=false; updateLiveBtn();
@@ -1487,7 +1511,7 @@ function playMusic(song){
 
 // ---- Hilfe: Alle Sprachbefehle ----
 function jarvisHelp(){
-  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
+  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n🎛️ **Sprach-Modus** – „Diktat-Modus" (nur schreiben) · „Direkt-Modus" (sofort ausführen)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
   switchView('chat'); sfxReceive(); addMsg('chat', txt, 'jarvis');
   speak('Ich erkläre dir meine Befehle. Schau auf den Bildschirm.');
   busy=false;
@@ -1981,6 +2005,7 @@ function openSettings(){
   if(lgConnected) lgStatus('✅ TV verbunden.');
   if(hueUser) hueStatus('✅ Bereits verbunden – '+Object.keys(hueLights).length+' Lampe(n).');
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
+  el('#voiceModeInput').value=voiceMode;
   populateVoices();
   el('#overlay').classList.add('show');
 }
@@ -1991,6 +2016,7 @@ function saveSettings(){
   localStorage.setItem('jarvis_web', webOn?'true':'false');
   localStorage.setItem('jarvis_sfx', sfxOn?'true':'false');
   voicePref = el('#voiceInput').value; localStorage.setItem('jarvis_voice', voicePref); pickVoice();
+  voiceMode = el('#voiceModeInput').value; localStorage.setItem('jarvis_voicemode', voiceMode);
   haUrl = el('#haUrl').value.trim().replace(/\/$/,'') || 'http://localhost:8123'; haToken = el('#haToken').value.trim();
   localStorage.setItem('ha_url', haUrl); localStorage.setItem('ha_token', haToken);
   closeSettings(); updateStatus();
