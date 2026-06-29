@@ -559,6 +559,11 @@
         <span>🔊 Sound-Effekte (futuristisch)</span>
         <input type="checkbox" id="sfxInput" checked style="width:auto;">
       </div>
+      <label>🗣️ Stimme (zum Vorlesen)</label>
+      <div style="display:flex;gap:8px;">
+        <select id="voiceInput" style="flex:1;"></select>
+        <button class="close" onclick="testVoice()">🔊 Test</button>
+      </div>
       <p style="margin-top:14px;font-size:12px;">Noch keinen Key? Hol ihn auf <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</p>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
@@ -827,11 +832,28 @@ function send(view){
 
 // ---- Sprachausgabe ----
 let bestVoice=null;
+let voicePref = localStorage.getItem('jarvis_voice') || '';
 function pickVoice(){
-  const v = speechSynthesis.getVoices().filter(x=>x.lang&&x.lang.toLowerCase().startsWith('de'));
-  const prefer=['natural','online','katja','hedda','conrad','stefan'];
-  for(const k of prefer){ const f=v.find(x=>x.name.toLowerCase().includes(k)); if(f){bestVoice=f;return;} }
-  bestVoice = v[0]||null;
+  const all = speechSynthesis.getVoices();
+  const de = all.filter(x=>x.lang&&x.lang.toLowerCase().startsWith('de'));
+  if(voicePref){ const p = de.find(x=>x.name===voicePref) || all.find(x=>x.name===voicePref); if(p){ bestVoice=p; populateVoices(); return; } }
+  // bevorzugt hochwertige/natürliche Stimmen, meidet Roboter-Stimmen
+  const prefer = ['premium','enhanced','natural','online','siri','anna','helena','petra','markus','viktoria','katja','hedda','conrad','stefan','yannick','sandy'];
+  for(const k of prefer){ const f = de.find(x=>x.name.toLowerCase().includes(k)); if(f){ bestVoice=f; populateVoices(); return; } }
+  bestVoice = de[0]||null; populateVoices();
+}
+function populateVoices(){
+  const sel = el('#voiceInput'); if(!sel) return;
+  const de = speechSynthesis.getVoices().filter(x=>x.lang&&x.lang.toLowerCase().startsWith('de'));
+  sel.innerHTML = '<option value="">Automatisch (beste verfügbare)</option>';
+  de.forEach(v=>{ const o=document.createElement('option'); o.value=v.name; o.textContent=v.name; if(v.name===voicePref)o.selected=true; sel.appendChild(o); });
+}
+function testVoice(){
+  const sel=el('#voiceInput'); if(sel) voicePref=sel.value;
+  pickVoice();
+  const u=new SpeechSynthesisUtterance('Hallo Kamil, so klinge ich. Wie gefällt dir meine Stimme?');
+  u.lang='de-DE'; if(bestVoice)u.voice=bestVoice; u.rate=0.97;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
 }
 if(window.speechSynthesis){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
 function speak(text){
@@ -1427,6 +1449,7 @@ function openSettings(){
   if(lgConnected) lgStatus('✅ TV verbunden.');
   if(hueUser) hueStatus('✅ Bereits verbunden – '+Object.keys(hueLights).length+' Lampe(n).');
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
+  populateVoices();
   el('#overlay').classList.add('show');
 }
 function closeSettings(){ el('#overlay').classList.remove('show'); }
@@ -1435,6 +1458,7 @@ function saveSettings(){
   localStorage.setItem('jarvis_key',apiKey); localStorage.setItem('jarvis_model',model);
   localStorage.setItem('jarvis_web', webOn?'true':'false');
   localStorage.setItem('jarvis_sfx', sfxOn?'true':'false');
+  voicePref = el('#voiceInput').value; localStorage.setItem('jarvis_voice', voicePref); pickVoice();
   haUrl = el('#haUrl').value.trim().replace(/\/$/,'') || 'http://localhost:8123'; haToken = el('#haToken').value.trim();
   localStorage.setItem('ha_url', haUrl); localStorage.setItem('ha_token', haToken);
   closeSettings(); updateStatus();
