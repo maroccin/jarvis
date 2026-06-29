@@ -888,17 +888,35 @@ function speak(text){
 }
 
 // ---- Spracheingabe & Sprachsteuerung ----
-let recog=null, liveMode=false, busy=false, micOn=false;
+// recogState: 'idle' | 'starting' | 'listening'  – echter Zustand, nur über Events gesetzt
+let recog=null, liveMode=false, busy=false, micOn=false, recogState='idle', gotResult=false, startGuard=null;
 const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){
-  recog=new SR(); recog.lang='de-DE'; recog.interimResults=false;
-  recog.onresult=(e)=>{ const txt=e.results[e.results.length-1][0].transcript.trim(); micVisual(false); handleVoice(txt); };
-  recog.onend=()=>{ micVisual(false); if(liveMode && !busy){ setTimeout(startRecog,200); } };
-  recog.onerror=(e)=>{ micVisual(false);
+  recog=new SR(); recog.lang='de-DE'; recog.interimResults=false; recog.maxAlternatives=1;
+  // Aufnahme hat WIRKLICH begonnen → erst jetzt rot anzeigen
+  recog.onstart=()=>{ recogState='listening'; gotResult=false; clearTimeout(startGuard); micVisual(true); };
+  recog.onresult=(e)=>{ gotResult=true; const txt=e.results[e.results.length-1][0].transcript.trim(); micVisual(false); if(txt) handleVoice(txt); };
+  recog.onend=()=>{
+    const wasListening = recogState==='listening';
+    recogState='idle'; micVisual(false);
+    if(liveMode && !busy){ setTimeout(startRecog,250); return; }
+    // Push-to-talk: rot war an, aber nichts erkannt → ehrliche Rückmeldung
+    if(wasListening && !gotResult && !busy){
+      addMsg(currentView,'🎤 Ich habe nichts gehört. Tipp nochmal aufs Mikro und sprich gleich danach deutlich los.','jarvis');
+    }
+  };
+  recog.onerror=(e)=>{
+    recogState='idle'; clearTimeout(startGuard); micVisual(false);
     if(e.error==='not-allowed'||e.error==='service-not-allowed'){
       liveMode=false; updateLiveBtn();
-      addMsg(currentView,'🎤 Das Mikrofon ist blockiert. Bitte oben im Browser auf „Zulassen" klicken.','jarvis');
-    } else if(liveMode && !busy){ setTimeout(startRecog,400); } };
+      addMsg(currentView,'🎤 Das Mikrofon ist blockiert. Klick oben im Browser auf das Schloss-Symbol → Mikrofon „Zulassen".','jarvis');
+    } else if(e.error==='no-speech'){
+      if(!liveMode) addMsg(currentView,'🎤 Ich habe nichts gehört. Tipp nochmal und sprich gleich los. 🙂','jarvis');
+      else if(!busy) setTimeout(startRecog,300);
+    } else if(e.error==='aborted'){
+      /* Nutzer hat selbst gestoppt – keine Meldung */
+    } else if(liveMode && !busy){ setTimeout(startRecog,400); }
+  };
 }
 function micVisual(on){
   micOn=on;
@@ -906,15 +924,33 @@ function micVisual(on){
   orb.classList.toggle('listening', on);
   if(on) sfxListen();
 }
-function startRecog(){ if(!recog) return; try{ recog.start(); micVisual(true); }catch(e){} }
+function startRecog(){
+  if(!recog) return;
+  if(recogState!=='idle') return;        // läuft schon → nicht doppelt starten (verhindert das Hängen)
+  recogState='starting';
+  try{
+    recog.start();
+    // Sicherheits-Timeout: falls onstart nie kommt, Zustand nach 1.2s zurücksetzen
+    clearTimeout(startGuard);
+    startGuard=setTimeout(()=>{ if(recogState==='starting'){ recogState='idle'; micVisual(false); } }, 1200);
+  }catch(e){
+    // „already started" → sauber stoppen und kurz neu versuchen
+    recogState='idle';
+    try{ recog.stop(); }catch(_){}
+    setTimeout(()=>{ if(recogState==='idle' && (liveMode||micWanted)) startRecog(); }, 350);
+  }
+}
+let micWanted=false;
 function resumeAfter(){ busy=false; if(liveMode){ setTimeout(startRecog,300); } }
 
 // Push-to-talk (einmal sprechen)
 function toggleMic(view){
   if(view) switchView(view);
-  if(!recog){ addMsg(currentView,'🎤 Dein Browser kann keine Spracheingabe. Nutze **Edge** oder **Chrome**.','jarvis'); return; }
-  if(micOn){ recog.stop(); return; }
-  startRecog();
+  if(!recog){ addMsg(currentView,'🎤 Dieser Browser kann keine Spracheingabe (z.B. Safari am iPhone). Nutze **Edge** oder **Chrome** – oder tippe einfach. ⌨️','jarvis'); return; }
+  // Audio-Kontext „aufwecken" (manche Browser blocken Ton bis zur ersten Aktion)
+  try{ const a=ac(); if(a&&a.state==='suspended')a.resume(); }catch(_){}
+  if(recogState==='listening' || recogState==='starting'){ micWanted=false; try{ recog.stop(); }catch(_){} return; }
+  micWanted=true; startRecog();
 }
 
 // Live-Gespräch an/aus
@@ -926,7 +962,7 @@ function toggleLive(){
     addMsg(currentView,'🎙️ **Live-Gespräch ist an.** Sprich einfach drauflos – ich höre durchgehend zu und antworte. Du kannst auch sagen: „Bereich Trading", „Schalte das Wohnzimmerlicht aus" oder „Stopp Gespräch" zum Beenden.','jarvis');
     say('Live Gespräch ist an. Ich höre zu.');
   } else {
-    if(recog) recog.stop(); speechSynthesis.cancel();
+    micWanted=false; if(recog){ try{ recog.stop(); }catch(_){} } speechSynthesis.cancel();
     addMsg(currentView,'⏹️ Live-Gespräch beendet.','jarvis');
   }
 }
