@@ -610,6 +610,10 @@
         <button class="close" onclick="testYouTube()">🔎 Test</button>
       </div>
       <div id="ytStatus" style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.4;"></div>
+
+      <label style="margin-top:16px;">🧠 Langzeitgedächtnis <span style="color:var(--muted);">– was Jarvis dauerhaft über dich weiß und in Antworten nutzt</span></label>
+      <div id="memList" style="margin-top:6px;"></div>
+      <button class="close" style="margin-top:8px;" onclick="memAddPrompt()">➕ Etwas merken</button>
       <p style="margin-top:14px;font-size:12px;">Noch keinen Key? Hol ihn auf <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</p>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
@@ -811,6 +815,10 @@ async function askClaude(view, userText){
   hist.push({ role:'user', content:userText });
   let sys = PROMPTS[view];
   if(levels[view]) sys += STYLE[levels[view]] || '';
+  // Langzeitgedächtnis: was Jarvis dauerhaft über Kamil weiß
+  if(jarvisMem.length){
+    sys += '\n\nDas weißt du dauerhaft über Kamil (nutze es natürlich, wenn relevant – erwähne es nicht ungefragt):\n- '+jarvisMem.map(m=>m.text).join('\n- ');
+  }
   if(view==='chat' && myLoc){
     sys += '\n\nKamils ungefährer Standort: '+myLoc.lat+','+myLoc.lon+'. Bei Orts-/Navigationsfragen („wo ist die nächste Tankstelle/Restaurant/Apotheke", „navigiere zu …", „in der Nähe") gib einen anklickbaren Google-Maps-Link: [📍 Auf Karte öffnen](https://www.google.com/maps/search/SUCHE/@'+myLoc.lat+','+myLoc.lon+',15z) – ersetze SUCHE durch den URL-kodierten Suchbegriff.';
   }
@@ -1043,6 +1051,32 @@ function handleVoice(txt){
   }
   if(/(direkt ?modus|sende ?modus|sofort.?modus|direkt absenden|automatisch senden)/.test(low)){
     voiceMode='send'; localStorage.setItem('jarvis_voicemode','send'); say('Direkt-Modus an. Ich führe gesprochene Befehle sofort aus.'); busy=false; return;
+  }
+  // Langzeitgedächtnis: was weißt du über mich?
+  if(/(was weißt du über mich|was weisst du über mich|was hast du dir gemerkt|was weißt du alles|dein gedächtnis|dein gedaechtnis)/.test(low)){
+    if(!jarvisMem.length){ say('Ich habe mir noch nichts Dauerhaftes über dich gemerkt. Sag z.B. „Merk dir, dass ich Kaffee liebe."'); }
+    else { say('Das weiß ich über dich:\n• '+jarvisMem.map(m=>m.text).join('\n• ')); }
+    busy=false; return;
+  }
+  // Etwas vergessen
+  const forget = txt.match(/(?:vergiss|lösch(?:e)?|entferne)\s+(?:dass\s+|aus dem gedächtnis\s+)?(.+)/i);
+  if(forget && forget[1] && /(vergiss|lösch|entferne)/.test(low)){
+    const needle = forget[1].toLowerCase().trim();
+    const idx = jarvisMem.findIndex(m=>m.text.toLowerCase().includes(needle) || needle.includes(m.text.toLowerCase()));
+    if(idx>=0){ const t=jarvisMem[idx].text; memDel(idx); say('Okay, ich habe vergessen: '+t); }
+    else say('Dazu habe ich nichts gespeichert.');
+    busy=false; return;
+  }
+  // Dauerhaft merken: „Merk dir, dass …" / „… dauerhaft/für immer …"
+  const memM = txt.match(/(?:merk(?:e)?\s+dir|behalte?|präg(?:e)?\s+dir\s+ein|speicher(?:e)?\s+dir|merk(?:e)?\s+dir\s+dauerhaft)\b[,:]?\s+(?:dauerhaft\s+|für\s+immer\s+|fuer\s+immer\s+|langfristig\s+)?(?:dass\s+|ich\s+)?(.+)/i);
+  if(memM && memM[1] && (/(dass|dauerhaft|für immer|fuer immer|langfristig|über mich|ich (bin|mag|liebe|hasse|heiße|heisse|wohne|habe|arbeite|fahre))/.test(low))){
+    let fact = memM[1].trim();
+    if(/^(dass|ich)\b/.test(memM[1].trim().toLowerCase())) fact = memM[1].trim();   // ganzen Satz behalten
+    // „dass ich …" → in „Kamil …" Form bringen für sauberen Prompt
+    fact = fact.replace(/^dass\s+/i,'').replace(/^ich\s+/i,'Kamil ');
+    if(memAdd(fact)){ say('Gespeichert. Ich merke mir: '+fact+' 🧠'); }
+    else say('Das wusste ich schon. 🙂');
+    busy=false; return;
   }
   // Live-Gespräch per Sprache beenden
   if(liveMode && /(stopp|stop|beende|beenden|schluss|aufhören|aufhoeren)\b/.test(low)){
@@ -1670,7 +1704,7 @@ function randGreeting(){ return GREETINGS[Math.floor(Math.random()*GREETINGS.len
 
 // ---- Hilfe: Alle Sprachbefehle ----
 function jarvisHelp(){
-  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🎬 Video – „Zeig mir ein Video über Weltraum" (läuft IN Jarvis)\n😴 „Schlafmodus" – Lichter aus & gute Nacht\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n🎛️ **Sprach-Modus** – „Diktat-Modus" (nur schreiben) · „Direkt-Modus" (sofort ausführen)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
+  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n\n🎮 **Unterhaltung:**\n🧠 Quiz – „Starte Quiz" · „Frag mich was"\n✊ Schere-Stein-Papier – „Schere, Stein, Papier"\n👅 „Zungenbrecher" · ✨ „Motivier mich" · 🤓 „Erzähl mir einen Fun-Fact"\n🎵 Musik – „Spiele Bohemian Rhapsody" · „Spiel etwas von Adele"\n🎬 Video – „Zeig mir ein Video über Weltraum" (läuft IN Jarvis)\n😴 „Schlafmodus" – Lichter aus & gute Nacht\n🟢 Senso – „Spiel Senso" (Ton-Memory-Spiel mit Klängen)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n🎛️ **Sprach-Modus** – „Diktat-Modus" (nur schreiben) · „Direkt-Modus" (sofort ausführen)\n🧠 **Gedächtnis** – „Merk dir, dass ich Kaffee liebe" · „Was weißt du über mich?" · „Vergiss …"\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
   switchView('chat'); sfxReceive(); addMsg('chat', txt, 'jarvis');
   speak('Ich erkläre dir meine Befehle. Schau auf den Bildschirm.');
   busy=false;
@@ -2166,6 +2200,7 @@ function openSettings(){
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
   el('#voiceModeInput').value=voiceMode;
   el('#ytKeyInput').value=ytKey;
+  renderMem();
   populateVoices();
   el('#overlay').classList.add('show');
 }
@@ -2290,6 +2325,28 @@ function initWeather(){
   if(navigator.geolocation){ navigator.geolocation.getCurrentPosition(p=>loadWeather(p.coords.latitude,p.coords.longitude), fb, {timeout:8000}); }
   else fb();
 }
+// ---- Langzeitgedächtnis (dauerhaftes Wissen über Kamil) ----
+let jarvisMem = JSON.parse(localStorage.getItem('jarvis_mem')||'[]');
+function saveMem(){ localStorage.setItem('jarvis_mem', JSON.stringify(jarvisMem)); }
+function memAdd(text){
+  text = (text||'').trim(); if(!text) return false;
+  if(jarvisMem.some(m=>m.text.toLowerCase()===text.toLowerCase())) return false;   // keine Duplikate
+  jarvisMem.push({ text:text, ts:Date.now() }); saveMem(); renderMem(); return true;
+}
+function memDel(i){ jarvisMem.splice(i,1); saveMem(); renderMem(); }
+function renderMem(){
+  const box=el('#memList'); if(!box) return; box.innerHTML='';
+  if(!jarvisMem.length){ box.innerHTML='<div style="font-size:12px;color:var(--muted);">Noch nichts gemerkt. Sag „Merk dir, dass …" oder tippe unten ➕.</div>'; return; }
+  jarvisMem.forEach((m,i)=>{
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:8px;padding:7px 10px;margin-bottom:6px;border:1px solid var(--border);border-radius:8px;background:var(--panel2);font-size:13px;';
+    row.innerHTML='<span style="flex:1;">🧠 '+escHtml(m.text)+'</span><span style="cursor:pointer;color:var(--muted);" title="Vergessen">✕</span>';
+    row.querySelector('span:last-child').onclick=()=>memDel(i);
+    box.appendChild(row);
+  });
+}
+function memAddPrompt(){ const t=prompt('Was soll Jarvis sich dauerhaft über dich merken?'); if(t && memAdd(t)){ /* gespeichert */ } }
+
 let tasks = JSON.parse(localStorage.getItem('jarvis_tasks')||'[]');
 function saveTasks(){ localStorage.setItem('jarvis_tasks', JSON.stringify(tasks)); }
 function fmtDue(d){ const p=d.split('-'); return p.length===3 ? p[2]+'.'+p[1]+'.' : d; }
