@@ -139,7 +139,7 @@
 
   /* ---------- Hauptbereich ---------- */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  .chat, .dash { -webkit-overflow-scrolling: touch; }
+  .chat, .dash { -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }
   /* Leuchtende HUD-Eckwinkel als Rahmen */
   #main::before {
     content:""; position:absolute; inset:10px; pointer-events:none; z-index:6;
@@ -250,10 +250,14 @@
   #wxCard { cursor:pointer; }
   .wxfc { display:none; margin-top:12px; border-top:1px solid rgba(53,200,255,0.12); padding-top:8px; }
   #wxCard.open .wxfc { display:block; }
-  .wxrow { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 0; font-size:13px; }
-  .wxrow .d { color:var(--muted); width:46px; }
-  .wxrow .ic { font-size:18px; }
-  .wxrow .mx { color:#eafcff; font-weight:600; } .wxrow .mn { color:var(--muted); }
+  .wxday { padding:7px 0; border-bottom:1px solid rgba(53,200,255,0.07); }
+  .wxday:last-child { border-bottom:none; }
+  .wxr1 { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13px; }
+  .wxr1 .d { color:var(--cyan); width:50px; font-weight:600; }
+  .wxr1 .ic { font-size:18px; }
+  .wxr1 .mx { color:#eafcff; font-weight:600; } .wxr1 .mn { color:var(--muted); }
+  .wxdp { font-size:12px; color:var(--muted); margin-top:4px; display:flex; gap:14px; padding-left:50px; }
+  .wxdp b { color:var(--text); font-weight:600; }
   #taskAdd { float:right; cursor:pointer; color:var(--cyan); font-size:16px; border:1px solid var(--border); border-radius:6px; width:22px; height:22px; line-height:20px; text-align:center; }
   #taskAdd:hover { background:rgba(53,200,255,0.2); }
   .taskItem { display:flex; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid rgba(53,200,255,0.08); font-size:14px; }
@@ -1456,14 +1460,22 @@ function briefing(){
   const text = parts.join(' ');
   switchView('chat'); sfxReceive(); addMsg('chat', text, 'jarvis'); speak(text);
 }
-let wxDaily = null;
+let wxDaily = null, wxHourly = null;
 async function loadWeather(lat,lon){
   try{
-    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto');
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto');
     const j=await r.json();
     if(j.current){ setWx(j.current.weather_code, j.current.temperature_2m); localStorage.setItem('wx_loc',lat+','+lon); }
+    if(j.hourly) wxHourly = j.hourly;
     if(j.daily){ wxDaily = j.daily; renderForecast(); }
   }catch(e){ const d=el('#wxDesc'); if(d) d.textContent='Wetter nicht verfügbar'; }
+}
+function hourTemp(dayStr,hh){
+  if(!wxHourly||!wxHourly.time) return null;
+  const key = dayStr+'T'+(hh<10?'0'+hh:''+hh)+':00';
+  const idx = wxHourly.time.indexOf(key);
+  if(idx<0) return null;
+  return Math.round(wxHourly.temperature_2m[idx]);
 }
 function renderForecast(){
   const box=el('#wxForecast'); if(!box || !wxDaily) return;
@@ -1471,7 +1483,15 @@ function renderForecast(){
   for(let i=0;i<days.length;i++){
     const w = WX[wxDaily.weather_code[i]]||['🌡️',''];
     const lbl = i===0 ? 'Heute' : new Date(days[i]).toLocaleDateString('de-CH',{weekday:'short'});
-    html += '<div class="wxrow"><span class="d">'+lbl+'</span><span class="ic">'+w[0]+'</span><span><span class="mx">'+Math.round(wxDaily.temperature_2m_max[i])+'°</span> <span class="mn">'+Math.round(wxDaily.temperature_2m_min[i])+'°</span></span></div>';
+    const m=hourTemp(days[i],8), n=hourTemp(days[i],13), e=hourTemp(days[i],19);
+    let dp='';
+    if(m!=null||n!=null||e!=null){
+      dp = '<div class="wxdp">'+
+        (m!=null?'<span>🌅 <b>'+m+'°</b></span>':'')+
+        (n!=null?'<span>☀️ <b>'+n+'°</b></span>':'')+
+        (e!=null?'<span>🌆 <b>'+e+'°</b></span>':'')+'</div>';
+    }
+    html += '<div class="wxday"><div class="wxr1"><span class="d">'+lbl+'</span><span class="ic">'+w[0]+'</span><span><span class="mx">'+Math.round(wxDaily.temperature_2m_max[i])+'°</span> <span class="mn">'+Math.round(wxDaily.temperature_2m_min[i])+'°</span></span></div>'+dp+'</div>';
   }
   box.innerHTML = html;
 }
