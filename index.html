@@ -604,6 +604,8 @@
         <option value="send">Direkt – sofort ausführen / absenden</option>
         <option value="dictate">Diktat – nur ins Feld schreiben, du sendest selbst</option>
       </select>
+      <label>🎬 YouTube API-Key <span style="color:var(--muted);">– optional; damit „Spiele …" sofort das genau richtige Video startet (gratis bei console.cloud.google.com → YouTube Data API)</span></label>
+      <input id="ytKeyInput" type="password" placeholder="AIza… (optional – geht auch ohne)">
       <p style="margin-top:14px;font-size:12px;">Noch keinen Key? Hol ihn auf <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</p>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
@@ -1514,11 +1516,37 @@ function ytVideoId(s){
   const m = s.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([\w-]{11})/) || s.match(/^([\w-]{11})$/);
   return m ? m[1] : null;
 }
-function openVideo(query, titleOverride){
+// Optionaler YouTube-API-Key (für garantiert direktes Abspielen)
+let ytKey = localStorage.getItem('jarvis_ytkey') || '';
+// JSON mit Timeout holen (bricht ab, wenn ein Dienst nicht antwortet)
+async function fetchJsonT(url, ms){
+  const c = new AbortController(); const t=setTimeout(()=>c.abort(), ms||4000);
+  try{ const r=await fetch(url,{signal:c.signal}); clearTimeout(t); if(!r.ok) return null; return await r.json(); }
+  catch(e){ clearTimeout(t); return null; }
+}
+// Suchbegriff → echte Video-ID (mehrere Wege, erster Treffer gewinnt)
+async function resolveYouTube(query){
+  // 1) Offizieller YouTube-Key – am zuverlässigsten
+  if(ytKey){
+    const j = await fetchJsonT('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q='+encodeURIComponent(query)+'&key='+ytKey, 5000);
+    if(j && j.items && j.items[0] && j.items[0].id && j.items[0].id.videoId) return j.items[0].id.videoId;
+  }
+  // 2) Ohne Key: Piped-Instanzen
+  for(const base of ['https://pipedapi.kavin.rocks','https://pipedapi.adminforge.de','https://pipedapi.leptons.xyz']){
+    const j = await fetchJsonT(base+'/search?q='+encodeURIComponent(query)+'&filter=videos', 3500);
+    if(j && j.items){ const it=j.items.find(x=>x.url && x.url.includes('watch?v=')); if(it){ const m=it.url.match(/v=([\w-]{11})/); if(m) return m[1]; } }
+  }
+  // 3) Ohne Key: Invidious-Instanzen
+  for(const base of ['https://inv.nadeko.net','https://invidious.nerdvpn.de','https://yewtu.be']){
+    const j = await fetchJsonT(base+'/api/v1/search?q='+encodeURIComponent(query)+'&type=video', 3500);
+    if(Array.isArray(j)){ const it=j.find(x=>x.videoId); if(it) return it.videoId; }
+  }
+  return null;
+}
+// Eingebetteter Player – löst Suchbegriffe vorher in das echte Video auf
+async function openVideo(query, titleOverride){
   closeVideo();
-  const vid = ytVideoId(query.trim());                 // direkter Link/ID → sauber einbetten
-  const embed = vid ? 'https://www.youtube.com/embed/'+vid+'?autoplay=1&rel=0&modestbranding=1'
-                    : 'https://www.youtube.com/embed?listType=search&list='+encodeURIComponent(query)+'&autoplay=1&rel=0&modestbranding=1';
+  query = (query||'').trim();
   const q = encodeURIComponent(query);
   const ov = document.createElement('div'); ov.id='videoOverlay';
   ov.style.cssText='position:fixed;inset:0;z-index:210;display:flex;flex-direction:column;background:rgba(3,7,14,0.97);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);';
@@ -1530,12 +1558,23 @@ function openVideo(query, titleOverride){
       '<button style="'+btn+'background:linear-gradient(135deg,#5ff0ff,#35c8ff);color:#04161f;border-color:var(--cyan);" onclick="closeVideo()">✕ Schliessen</button>'+
     '</div>'+
     '<div style="flex:1;position:relative;background:#000;">'+
-      '<iframe id="ytFrame" src="'+embed+'" '+
-      'style="position:absolute;inset:0;width:100%;height:100%;border:none;" '+
-      'allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>'+
+      '<div id="ytLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#5ff0ff;font-family:\'Share Tech Mono\',monospace;font-size:15px;">🔎 Suche das Video…</div>'+
+      '<iframe id="ytFrame" src="" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>'+
     '</div>';
-  document.body.appendChild(ov);
-  sfxReceive();
+  document.body.appendChild(ov); sfxReceive();
+  // Video-ID bestimmen: direkter Link sofort, sonst Suchbegriff auflösen
+  let vid = ytVideoId(query);
+  if(!vid) vid = await resolveYouTube(query);
+  const frame = document.getElementById('ytFrame'), load = document.getElementById('ytLoading');
+  if(!frame) return;   // wurde inzwischen geschlossen
+  if(vid){
+    frame.src = 'https://www.youtube.com/embed/'+vid+'?autoplay=1&rel=0&modestbranding=1';
+    if(load) load.remove();
+  } else {
+    // Notnagel: Such-Einbettung (zeigt das erste Ergebnis)
+    frame.src = 'https://www.youtube.com/embed?listType=search&list='+q+'&autoplay=1&rel=0&modestbranding=1';
+    if(load) load.textContent='Spiele bestes Suchergebnis…', setTimeout(()=>{ if(load)load.remove(); },1500);
+  }
 }
 function closeVideo(){ const o=document.getElementById('videoOverlay'); if(o) o.remove(); }
 
@@ -2095,6 +2134,7 @@ function openSettings(){
   if(hueUser) hueStatus('✅ Bereits verbunden – '+Object.keys(hueLights).length+' Lampe(n).');
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
   el('#voiceModeInput').value=voiceMode;
+  el('#ytKeyInput').value=ytKey;
   populateVoices();
   el('#overlay').classList.add('show');
 }
@@ -2106,6 +2146,7 @@ function saveSettings(){
   localStorage.setItem('jarvis_sfx', sfxOn?'true':'false');
   voicePref = el('#voiceInput').value; localStorage.setItem('jarvis_voice', voicePref); pickVoice();
   voiceMode = el('#voiceModeInput').value; localStorage.setItem('jarvis_voicemode', voiceMode);
+  ytKey = el('#ytKeyInput').value.trim(); localStorage.setItem('jarvis_ytkey', ytKey);
   haUrl = el('#haUrl').value.trim().replace(/\/$/,'') || 'http://localhost:8123'; haToken = el('#haToken').value.trim();
   localStorage.setItem('ha_url', haUrl); localStorage.setItem('ha_token', haToken);
   closeSettings(); updateStatus();
