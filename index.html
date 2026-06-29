@@ -970,6 +970,61 @@ function handleVoice(txt){
   // Timer / Wecker (vor der Aufgaben-Erkennung)
   const tsec = matchTimer(low);
   if(tsec){ startTimer(tsec); return; }
+  // Pomodoro-Lerntimer (25 Min)
+  if(/pomodoro|lern.?timer|fokus.?timer|konzentrations.?timer/.test(low)){
+    startTimer(25*60); busy=false; return;
+  }
+  // Trinkgeld-Rechner
+  const tip = matchTip(low);
+  if(tip){ say(tip); busy=false; return; }
+  // Buchstabieren (Funkalphabet)
+  const sp = low.match(/buchstabiere?\s+(?:mir\s+)?(?:das\s+wort\s+)?([a-zäöüß]+)/);
+  if(sp && sp[1]){ say(spellWord(sp[1])); busy=false; return; }
+  // Witz erzählen
+  if(/(erzähl|erzaehl|witz|witzig|bring mich zum lachen|mach einen scherz)/.test(low) && /witz|lachen|scherz/.test(low)){
+    const j = JOKES[Math.floor(Math.random()*JOKES.length)];
+    say('😄 '+j); busy=false; return;
+  }
+  // Aufgaben vorlesen
+  if(/(lies|sag|zeig|nenne?).*(aufgaben|to ?do|todo|liste|erledigen)|was muss ich (noch )?(machen|erledigen|tun)/.test(low)){
+    const open = tasks.filter(t=>!t.done);
+    switchView('home');
+    if(!open.length){ say('Du hast keine offenen Aufgaben. 🎉'); }
+    else { say('Deine Aufgaben: '+open.map((t,i)=>(i+1)+'. '+t.text).join('  ·  ')); }
+    busy=false; return;
+  }
+  // Wetter für eine bestimmte Stadt
+  const wxCity = matchWeatherCity(low);
+  if(wxCity){ doWeatherCity(wxCity); return; }
+  // Uhrzeit / Datum
+  if(/(wie spät|wieviel uhr|wie viel uhr|welche uhrzeit)/.test(low)){
+    say('Es ist '+new Date().toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'})+' Uhr.'); busy=false; return;
+  }
+  if(/(welcher tag|welches datum|der wievielte|den wievielten|welcher wochentag)/.test(low)){
+    say('Heute ist '+new Date().toLocaleDateString('de-CH',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.'); busy=false; return;
+  }
+  // Spaß: Münzwurf, Würfel, Zufallszahl
+  if(/(münze|muenze|kopf oder zahl|wirf eine münze)/.test(low)){
+    say('🪙 '+(Math.random()<0.5?'**Kopf**!':'**Zahl**!')); busy=false; return;
+  }
+  if(/(würfel|wuerfel|würfle|wuerfle|wirf.*würfel)/.test(low)){
+    say('🎲 Du hast eine **'+(Math.floor(Math.random()*6)+1)+'** gewürfelt!'); busy=false; return;
+  }
+  const zz = low.match(/zufallszahl.*?(?:zwischen\s*(\d+)\s*(?:und|bis)\s*(\d+)|von\s*(\d+)\s*bis\s*(\d+))/);
+  if(zz || /zufallszahl|zufalls zahl|würfle eine zahl/.test(low)){
+    const a = zz?parseInt(zz[1]||zz[3]||0):1, b = zz?parseInt(zz[2]||zz[4]||100):100;
+    const lo=Math.min(a,b), hi=Math.max(a,b);
+    say('🔢 Deine Zufallszahl: **'+(Math.floor(Math.random()*(hi-lo+1))+lo)+'** ('+lo+'–'+hi+')'); busy=false; return;
+  }
+  // Einheiten umrechnen
+  const unit = matchUnit(low);
+  if(unit){ say(unit); busy=false; return; }
+  // Währungsrechner (live Kurse)
+  const cur = matchCurrency(low);
+  if(cur){ doCurrency(cur); return; }
+  // Taschenrechner per Sprache
+  const calc = matchMath(low);
+  if(calc!=null){ say(calc.q+' = **'+calc.r+'**'); busy=false; return; }
   // Medien öffnen
   const media = matchMedia(low);
   if(media){ openMedia(media); return; }
@@ -1034,9 +1089,145 @@ function openMedia(site){
   busy=false;
 }
 
+// ---- Taschenrechner per Sprache (sicher, kein eval) ----
+function matchMath(low){
+  if(!/(rechne|wie ?viel ist|was ist|was sind|wieviel macht|berechne|plus|minus|mal|geteilt|hoch|prozent von)/.test(low)) return null;
+  let s = low
+    .replace(/komma/g,'.').replace(/,/g,'.')
+    .replace(/\bplus\b|\bund\b/g,'+').replace(/\bminus\b|\bweniger\b/g,'-')
+    .replace(/\bmal\b|\bmultipliziert mit\b|\bx\b/g,'*')
+    .replace(/\bgeteilt durch\b|\bgeteilt\b|\bdurch\b|\bdividiert durch\b/g,'/')
+    .replace(/\bhoch\b/g,'^');
+  // "X prozent von Y" → (X/100)*Y
+  const pm = s.match(/(\d+(?:\.\d+)?)\s*prozent von\s*(\d+(?:\.\d+)?)/);
+  if(pm){ const r=(parseFloat(pm[1])/100)*parseFloat(pm[2]); return { q:pm[1]+'% von '+pm[2], r:fmtNum(r) }; }
+  // nur Ziffern und Operatoren behalten
+  const expr = (s.match(/[\d\.\+\-\*\/\^\(\)\s]+/g)||[]).join('').trim();
+  if(!expr || !/\d[\+\-\*\/\^]/.test(expr.replace(/\s/g,''))) return null;
+  const r = safeEval(expr);
+  if(r==null || !isFinite(r)) return null;
+  return { q:expr.replace(/\*/g,'×').replace(/\//g,'÷').replace(/\^/g,'^').replace(/\s+/g,' ').trim(), r:fmtNum(r) };
+}
+function fmtNum(n){ return (Math.round(n*10000)/10000).toLocaleString('de-CH'); }
+// Mini-Parser (Shunting-Yard), nur Zahlen + - * / ^ ( ) – kein eval
+function safeEval(expr){
+  const toks = expr.match(/\d+\.?\d*|[\+\-\*\/\^\(\)]/g); if(!toks) return null;
+  const out=[], ops=[], prec={'+':1,'-':1,'*':2,'/':2,'^':3};
+  const apply=()=>{ const o=ops.pop(), b=out.pop(), a=out.pop(); if(a==null||b==null) return false;
+    out.push(o==='+'?a+b:o==='-'?a-b:o==='*'?a*b:o==='/'?a/b:Math.pow(a,b)); return true; };
+  for(const t of toks){
+    if(/\d/.test(t)) out.push(parseFloat(t));
+    else if(t==='('){ ops.push(t); }
+    else if(t===')'){ while(ops.length&&ops[ops.length-1]!=='(') if(!apply())return null; ops.pop(); }
+    else { while(ops.length&&prec[ops[ops.length-1]]>=prec[t]) if(!apply())return null; ops.push(t); }
+  }
+  while(ops.length) if(!apply())return null;
+  return out.length===1?out[0]:null;
+}
+
+// ---- Trinkgeld-Rechner ----
+function matchTip(low){
+  if(!/trinkgeld|tip\b/.test(low)) return null;
+  const m = low.match(/(\d+(?:[.,]\d+)?)/); if(!m) return null;
+  const sum = parseFloat(m[1].replace(',','.'));
+  const pm = low.match(/(\d+)\s*prozent/); const pct = pm?parseInt(pm[1]):10;
+  const tip = sum*pct/100; const total = sum+tip;
+  return '💰 Bei '+fmtNum(sum)+' und '+pct+'% Trinkgeld: **'+fmtNum(tip)+'** Trinkgeld → gesamt **'+fmtNum(total)+'**.';
+}
+// ---- Funkalphabet (NATO) ----
+const NATO = {a:'Alfa',b:'Bravo',c:'Charlie',d:'Delta',e:'Echo',f:'Foxtrot',g:'Golf',h:'Hotel',i:'India',j:'Juliett',k:'Kilo',l:'Lima',m:'Mike',n:'November',o:'Oscar',p:'Papa',q:'Quebec',r:'Romeo',s:'Sierra',t:'Tango',u:'Uniform',v:'Victor',w:'Whiskey',x:'X-Ray',y:'Yankee',z:'Zulu',ä:'Ärger',ö:'Ökonom',ü:'Übermut',ß:'Eszett'};
+function spellWord(w){
+  const parts = w.toLowerCase().split('').map(c=>NATO[c]|| (/[0-9]/.test(c)?c:null)).filter(Boolean);
+  return '🔤 '+w.toUpperCase()+': '+parts.join(' · ');
+}
+
+// ---- Witze ----
+const JOKES = [
+  'Was macht ein Pirat am Computer? Er drückt die Enter-Taste! 🏴‍☠️',
+  'Warum können Geister so schlecht lügen? Weil man durch sie hindurchsieht! 👻',
+  'Treffen sich zwei Magneten. Sagt der eine: „Was soll ich heute bloß anziehen?"',
+  'Was sagt ein Mathematiker beim Wandern? „Lass uns den Berg integrieren."',
+  'Warum nehmen Skelette nie an Partys teil? Sie haben niemanden, mit dem sie hingehen. 💀',
+  'Was ist orange und klingt wie ein Papagei? Eine Karotte. 🥕',
+  'Ich habe meinem Computer einen Witz erzählt – jetzt hängt er vor Lachen.',
+  'Warum war der Keks traurig? Weil seine Mutter so lange in der Dose war. 🍪',
+  'Wie nennt man einen Bumerang, der nicht zurückkommt? Einen Stock.',
+  'Was sagt der große Stift zum kleinen Stift? „Wachstift!"'
+];
+
+// ---- Wetter für eine Stadt (Open-Meteo Geocoding, gratis) ----
+function matchWeatherCity(low){
+  const m = low.match(/wetter\s+(?:in|für|fuer|von|bei)\s+([a-zäöüß\s\-]+?)(?:\s*\?|$|\smorgen|\sheute)/);
+  if(m && m[1]) return m[1].trim();
+  return null;
+}
+async function doWeatherCity(city){
+  busy=false; switchView('chat');
+  try{
+    const g = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=de');
+    const gj = await g.json();
+    if(!gj.results || !gj.results.length){ addMsg('chat','🌤️ Ort „'+escHtml(city)+'" nicht gefunden.','jarvis'); return; }
+    const loc = gj.results[0];
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude='+loc.latitude+'&longitude='+loc.longitude+'&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto');
+    const j = await r.json();
+    const w = WX[j.current.weather_code]||['🌡️',''];
+    const t = Math.round(j.current.temperature_2m);
+    const mx = Math.round(j.daily.temperature_2m_max[0]), mn = Math.round(j.daily.temperature_2m_min[0]);
+    const txt = w[0]+' In **'+loc.name+'** sind es **'+t+'°**, '+w[1]+'. Heute '+mx+'° / '+mn+'°.';
+    addMsg('chat', txt, 'jarvis');
+    speak('In '+loc.name+' sind es '+t+' Grad, '+w[1]+'.');
+  }catch(e){ addMsg('chat','🌤️ Wetter konnte gerade nicht geladen werden.','jarvis'); }
+}
+
+// ---- Einheiten umrechnen (offline) ----
+function matchUnit(low){
+  const m = low.match(/(\d+(?:[.,]\d+)?)\s*(km|kilometer|meilen|meile|kg|kilo|kilogramm|pfund|lbs|cm|zentimeter|zoll|inch|celsius|grad celsius|fahrenheit|grad fahrenheit|liter|gallonen|gallone)\b/);
+  if(!m || !/(in|nach|zu|umrechnen|wie viel|wieviel)/.test(low)) return null;
+  const v = parseFloat(m[1].replace(',','.')); const u = m[2];
+  const R = n=>fmtNum(n);
+  if(/km|kilometer/.test(u) && /meile/.test(low)) return v+' km = '+R(v*0.621371)+' Meilen';
+  if(/meile/.test(u) && /km|kilometer/.test(low)) return v+' Meilen = '+R(v*1.60934)+' km';
+  if(/kg|kilo/.test(u) && /pfund|lbs/.test(low)) return v+' kg = '+R(v*2.20462)+' Pfund (lbs)';
+  if(/pfund|lbs/.test(u) && /kg|kilo/.test(low)) return v+' Pfund = '+R(v*0.453592)+' kg';
+  if(/cm|zentimeter/.test(u) && /zoll|inch/.test(low)) return v+' cm = '+R(v*0.393701)+' Zoll';
+  if(/zoll|inch/.test(u) && /cm|zentimeter/.test(low)) return v+' Zoll = '+R(v*2.54)+' cm';
+  if(/celsius/.test(u) && /fahrenheit/.test(low)) return v+' °C = '+R(v*9/5+32)+' °F';
+  if(/fahrenheit/.test(u) && /celsius/.test(low)) return v+' °F = '+R((v-32)*5/9)+' °C';
+  if(/liter/.test(u) && /gallone/.test(low)) return v+' Liter = '+R(v*0.264172)+' Gallonen';
+  if(/gallone/.test(u) && /liter/.test(low)) return v+' Gallonen = '+R(v*3.78541)+' Liter';
+  return null;
+}
+
+// ---- Währungsrechner (gratis Live-Kurse) ----
+const CUR_WORDS = { euro:'EUR', eur:'EUR', franken:'CHF', chf:'CHF', dollar:'USD', usd:'USD', pfund:'GBP', gbp:'GBP', yen:'JPY', jpy:'JPY', bitcoin:'BTC', btc:'BTC' };
+function matchCurrency(low){
+  if(!/(euro|franken|dollar|pfund|chf|eur|usd|gbp|yen)/.test(low)) return null;
+  const m = low.match(/(\d+(?:[.,]\d+)?)\s*(euro|eur|franken|chf|dollar|usd|pfund|gbp|yen|jpy)\s*(?:in|nach|zu|umrechnen.*?in)?\s*(euro|eur|franken|chf|dollar|usd|pfund|gbp|yen|jpy)?/);
+  if(!m) return null;
+  const amt = parseFloat(m[1].replace(',','.'));
+  const from = CUR_WORDS[m[2]]; let to = m[3]?CUR_WORDS[m[3]]:null;
+  if(!from) return null;
+  if(!to) to = from==='CHF'?'EUR':'CHF';
+  if(from===to) return null;
+  return { amt, from, to };
+}
+async function doCurrency(c){
+  busy=false; switchView('chat');
+  try{
+    const r = await fetch('https://open.er-api.com/v6/latest/'+c.from);
+    const j = await r.json();
+    const rate = j.rates && j.rates[c.to];
+    if(!rate) throw new Error('Kurs fehlt');
+    const res = c.amt*rate;
+    const txt = c.amt+' '+c.from+' = **'+fmtNum(res)+' '+c.to+'**  _(Kurs '+fmtNum(rate)+')_';
+    addMsg('chat', '💱 '+txt, 'jarvis');
+    speak(c.amt+' '+c.from+' sind '+fmtNum(res)+' '+c.to+'.');
+  }catch(e){ addMsg('chat','💱 Konnte den Wechselkurs gerade nicht laden. 😕','jarvis'); }
+}
+
 // ---- Hilfe: Alle Sprachbefehle ----
 function jarvisHelp(){
-  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
+  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n🧮 **Rechnen** – „Rechne 15 mal 7" · „20 Prozent von 80"\n💱 **Währung** – „Wieviel ist 50 Euro in Franken?"\n📏 **Einheiten** – „10 km in Meilen" · „5 kg in Pfund"\n🎲 **Spaß** – „Wirf eine Münze" · „Würfle" · „Zufallszahl 1 bis 100"\n🕐 **Zeit** – „Wie spät ist es?" · „Welcher Tag ist heute?"\n🌍 **Wetter** – „Wetter in Berlin" · „Wetter in Zürich"\n😄 **Witz** – „Erzähl mir einen Witz"\n📋 **Vorlesen** – „Lies meine Aufgaben vor"\n💰 **Trinkgeld** – „Trinkgeld für 80 Franken"\n🔤 **Buchstabieren** – „Buchstabiere Kamil"\n🍅 **Pomodoro** – „Starte Pomodoro" (25 Min Lerntimer)\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
   switchView('chat'); sfxReceive(); addMsg('chat', txt, 'jarvis');
   speak('Ich erkläre dir meine Befehle. Schau auf den Bildschirm.');
   busy=false;
