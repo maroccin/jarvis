@@ -233,6 +233,32 @@
 
   /* ---------- Smart-Home-Dashboard ---------- */
   .dash { flex:1; overflow-y:auto; padding: 8px 24px 24px; }
+  /* ---- Dashboard-Karten (Uhr/Wetter/Aufgaben) ---- */
+  .dashgrid { display:grid; grid-template-columns: 1fr 1fr 1.4fr; gap:14px; margin-bottom:22px; }
+  @media (max-width:760px){ .dashgrid { grid-template-columns: 1fr; } }
+  .dcard { background: linear-gradient(135deg, rgba(14,30,52,0.6), rgba(8,18,34,0.45)); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border:1px solid var(--border); border-radius:14px; padding:16px 18px; position:relative; overflow:hidden;
+    box-shadow: 0 0 20px rgba(53,200,255,0.08), inset 0 0 24px rgba(53,200,255,0.04); }
+  .dcard::after { content:""; position:absolute; top:8px; right:8px; width:14px; height:14px; border-top:1.5px solid rgba(53,200,255,0.4); border-right:1.5px solid rgba(53,200,255,0.4); }
+  .dctitle { font-family:"Share Tech Mono",monospace; font-size:11px; letter-spacing:2px; color:var(--cyan); margin-bottom:8px; }
+  .dctime { font-family:"Orbitron",sans-serif; font-size:38px; font-weight:700; color:#eafcff; text-shadow:0 0 18px rgba(53,200,255,0.5); line-height:1; }
+  .dcsub { font-size:13px; color:var(--muted); margin-top:6px; }
+  .wxmain { display:flex; align-items:center; gap:12px; margin-top:2px; }
+  .wxico { font-size:38px; filter: drop-shadow(0 0 8px var(--blue-glow)); }
+  .wxtemp { font-family:"Orbitron",sans-serif; font-size:30px; font-weight:700; color:#eafcff; }
+  #taskAdd { float:right; cursor:pointer; color:var(--cyan); font-size:16px; border:1px solid var(--border); border-radius:6px; width:22px; height:22px; line-height:20px; text-align:center; }
+  #taskAdd:hover { background:rgba(53,200,255,0.2); }
+  .taskItem { display:flex; align-items:center; gap:9px; padding:7px 0; border-bottom:1px solid rgba(53,200,255,0.08); font-size:14px; }
+  .taskItem:last-child { border-bottom:none; }
+  .taskChk { width:18px; height:18px; border:1.5px solid var(--border); border-radius:5px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--cyan); }
+  .taskItem.done .taskTxt { text-decoration:line-through; color:var(--muted); }
+  .taskItem.due .taskTxt { color:var(--amber); }
+  .taskTxt { flex:1; }
+  .taskDue { font-size:11px; color:var(--muted); }
+  .taskItem.due .taskDue { color:var(--amber); }
+  .taskDel { cursor:pointer; color:var(--muted); opacity:.6; }
+  .taskDel:hover { color:var(--red); opacity:1; }
+  .taskEmpty { font-size:13px; color:var(--muted); padding:6px 0; }
   .dash::-webkit-scrollbar { width: 8px; } .dash::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
   .room { margin-bottom: 24px; }
   .room h3 { font-family:"Orbitron",sans-serif; font-size: 12px; color: var(--cyan); letter-spacing: 2px; margin: 6px 4px 12px; text-transform: uppercase; text-shadow:0 0 12px rgba(53,200,255,0.4); }
@@ -372,6 +398,7 @@
       <div class="viewhead"><h2>💬 Assistent</h2><p>Frag mich alles – Rezepte, Ideen, Alltag.</p></div>
       <div class="chat" id="chat-chat"></div>
       <div class="chips" id="chips-chat">
+        <div class="chip" onclick="briefing()">🔔 Was steht an?</div>
         <div class="chip" onclick="ask('chat','Was koche ich heute mit Hähnchen? Gib mir ein schnelles Rezept.')">🍳 Rezept-Idee</div>
         <div class="chip" onclick="ask('chat','Plane mir den heutigen Tag produktiv.')">📋 Tag planen</div>
         <div class="chip" onclick="ask('chat','Erzähl mir was Interessantes.')">✨ Überrasch mich</div>
@@ -387,7 +414,21 @@
     <div class="view" id="view-home">
       <div class="viewhead"><h2>🏠 Smart Home</h2><p>Deine Geräte auf einen Blick. Tipp eine Kachel an zum Schalten.</p></div>
       <div class="dash">
-        <div class="note">⚠️ Vorschau: Die Kacheln reagieren schon, steuern aber noch keine echten Geräte. Apple Home / Alexa wird im nächsten Schritt verbunden.</div>
+        <div class="dashgrid">
+          <div class="dcard" id="clockCard">
+            <div class="dctime" id="clTime">--:--</div>
+            <div class="dcsub" id="clDate">—</div>
+          </div>
+          <div class="dcard" id="wxCard">
+            <div class="dctitle">WETTER</div>
+            <div class="wxmain"><span class="wxico" id="wxIco">⏳</span><span class="wxtemp" id="wxTemp">—</span></div>
+            <div class="dcsub" id="wxDesc">lädt…</div>
+          </div>
+          <div class="dcard" id="taskCard">
+            <div class="dctitle">📋 AUFGABEN &amp; RECHNUNGEN <span id="taskAdd" onclick="addTask()" title="Hinzufügen">＋</span></div>
+            <div id="taskList"></div>
+          </div>
+        </div>
         <div class="scene-row">
           <div class="scene" onclick="scene('Guten Morgen', true)">🌅 Guten Morgen</div>
           <div class="scene" onclick="scene('Gute Nacht', false)">🌙 Gute Nacht</div>
@@ -409,6 +450,7 @@
           <div class="scene" onclick="huePreset({on:true,bri:150,effect:'colorloop'})">🌈 Farbwechsel</div>
         </div>
         <div class="scene-row" id="myScenes"></div>
+        <div class="scene-row" id="haRoutines"></div>
         <div id="rooms"></div>
       </div>
     </div>
@@ -570,7 +612,7 @@ const histories = { chat: [], trading: [], money: [], shop: [] };
 
 const BASE = `Du bist JARVIS, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis.`;
 const PROMPTS = {
-  chat: BASE + ` Du hilfst bei allem im Alltag: Rezepte, Planung, Fragen, Ideen.`,
+  chat: BASE + ` Du hilfst bei allem im Alltag: Rezepte, Planung, Fragen, Ideen. Wenn Kamil Musik/Videos hören oder eine Webseite öffnen will, gib ihm einen anklickbaren Markdown-Link zum Starten, z.B. [▶️ Auf YouTube abspielen](https://www.youtube.com/results?search_query=SUCHE) oder [🎵 Auf Spotify](https://open.spotify.com/search/SUCHE) – ersetze SUCHE durch den Wunsch (Leerzeichen mit + bzw. %20). Bei „öffne X" gib den passenden Link der Seite.`,
   trading: BASE + ` Fokus: Börse & Trading. Nenne konkrete Aktien/Coins mit aktuellen Kursen (nutze die Web-Suche für Live-Daten!) und eine klare Einschätzung. Gib Einstiegs- und Stop-Loss-Ideen. Risiko nur in EINEM kurzen Satz am Ende. Keine ausweichende "frag-einen-Berater"-Predigt.`,
   money: BASE + ` Fokus: Geld verdienen. Sei direkt, versiert und konkret. Liefere fertige PLÄNE und Schritt-für-Schritt-Anleitungen mit echten Zahlen: Aufwand, möglicher Verdienst (pro Tag/Woche) und der allererste Schritt, den Kamil HEUTE machen kann. Nutze die Web-Suche für aktuelle Möglichkeiten. KEINE entmutigenden Floskeln wie "online kann man nicht einfach Geld verdienen" – zeig stattdessen genau WIE es geht. Denke breit: Skills/Dienstleistungen verkaufen, Flipping, Online-Gigs, lokale Jobs, kleine Geschäftsideen.`,
   shop: BASE + ` Fokus: Dropshipping & Online-Shop. Sei proaktiv: schlage fertige Shop-Konzepte vor (Name, Nische, Produkte, Texte) und biete an, sie auszubauen. Nutze die Web-Suche für aktuelle Trend-Produkte.`
@@ -846,6 +888,16 @@ function handleVoice(txt){
     else { lgCmd('audio/volumeUp'); say('Mache lauter.'); }
     return;
   }
+  // Tagesübersicht per Sprache
+  if(/was steht (heute |alles )?an|tages.?(übersicht|uebersicht|briefing)|über(blick|sicht)|brief mich|was ist heute/.test(low)){
+    briefing(); return;
+  }
+  // Aufgabe/Erinnerung per Sprache
+  const rem = txt.match(/(?:erinnere?\s+mich\s+(?:an\s+|daran[,]?\s+)?|merke?\s+dir[,]?\s+|neue\s+aufgabe[:,]?\s+|notiere?\s+|aufgabe[:,]\s+)(.+)/i);
+  if(rem && rem[1]){
+    tasks.push({ text: rem[1].trim(), due:'', done:false }); saveTasks(); renderTasks();
+    switchView('home'); say('Notiert: '+rem[1].trim()); return;
+  }
   // 1) Bereich wechseln
   const nav = matchNav(low);
   if(nav){ switchView(nav.view); say('Wechsle zu '+nav.label+'.'); return; }
@@ -855,6 +907,8 @@ function handleVoice(txt){
   // 2b) Home-Assistant-Gerät per Name (Steckdosen, TV, Rollläden …)
   const hh = matchHA(low);
   if(hh){ switchView('home'); haSet(hh.id, hh.want); say(hh.confirm); return; }
+  // 2c) Eigene Routine per Name ("Routine Gemütlich" / "Gemütlich")
+  for(const rn in haRoutines){ if(rn.length>=3 && low.includes(rn.toLowerCase())){ applyRoutine(rn); say('Routine '+rn+' aktiviert.'); return; } }
   // 3) Sonst: echte Frage an Jarvis im aktuellen Bereich
   addMsg(currentView, txt, 'user');
   respond(currentView, txt);
@@ -1243,7 +1297,7 @@ async function haLoad(){
     arr.forEach(e=>{ const dom=e.entity_id.split('.')[0];
       if(HA_DOMAINS[dom]) haEntities[e.entity_id] = { name:(e.attributes&&e.attributes.friendly_name)||e.entity_id, state:e.state, domain:dom };
     });
-    renderHome();
+    renderHome(); renderRoutines();
     return Object.keys(haEntities).length;
   }catch(e){ haStatus('❌ Verbindung fehlgeschlagen: '+e.message); throw e; }
 }
@@ -1273,6 +1327,40 @@ function haSet(entity_id, turnOn){
   haService(dom, svc, entity_id);
 }
 function haToggle(entity_id){ const e=haEntities[entity_id]; if(e) haSet(entity_id, !haIsOn(e)); }
+// ---- Routinen (eigene Automationen) ----
+let haRoutines = JSON.parse(localStorage.getItem('ha_routines')||'{}');
+function renderRoutines(){
+  const row=el('#haRoutines'); if(!row) return; row.innerHTML='';
+  for(const name in haRoutines){
+    const s=document.createElement('div'); s.className='scene';
+    s.innerHTML='⚡ '+escHtml(name)+' <span style="color:var(--muted);margin-left:6px;" onclick="event.stopPropagation();delRoutine(\''+name.replace(/[\\\\\'\"]/g,'')+'\')">✕</span>';
+    s.onclick=()=>{ applyRoutine(name); };
+    row.appendChild(s);
+  }
+  if(Object.keys(haEntities).length){
+    const add=document.createElement('div'); add.className='scene'; add.style.borderStyle='dashed';
+    add.innerHTML='💾 Routine speichern'; add.onclick=saveRoutine; row.appendChild(add);
+  }
+}
+function saveRoutine(){
+  if(!Object.keys(haEntities).length){ addMsg('chat','Verbinde zuerst Home Assistant. 🦾','jarvis'); return; }
+  const name=prompt('Name der Routine (z.B. „Gemütlich", „Filmabend", „Alles aus"):'); if(!name) return;
+  const snap={};
+  for(const id in haEntities){ const d=haEntities[id].domain; if(d==='camera'||d==='scene') continue; snap[id]=haIsOn(haEntities[id])?'on':'off'; }
+  haRoutines[name.trim()]=snap; localStorage.setItem('ha_routines',JSON.stringify(haRoutines)); renderRoutines();
+}
+function applyRoutine(name){
+  const snap=haRoutines[name]; if(!snap) return;
+  const groups={};
+  for(const id in snap){ const e=haEntities[id]; if(!e) continue; const on=snap[id]==='on';
+    let dom=e.domain, svc; if(dom==='cover')svc=on?'open_cover':'close_cover'; else if(dom==='lock')svc=on?'unlock':'lock'; else svc=on?'turn_on':'turn_off';
+    const k=dom+'|'+svc; (groups[k]=groups[k]||[]).push(id);
+    e.state= on?(dom==='cover'?'open':dom==='lock'?'unlocked':'on'):(dom==='cover'?'closed':dom==='lock'?'locked':'off');
+  }
+  renderHome();
+  for(const k in groups){ const pr=k.split('|'); haFetch('/api/services/'+pr[0]+'/'+pr[1],{method:'POST',body:JSON.stringify({entity_id:groups[k]})}).catch(()=>{}); }
+}
+function delRoutine(name){ delete haRoutines[name]; localStorage.setItem('ha_routines',JSON.stringify(haRoutines)); renderRoutines(); }
 // Kamera-Live-Bilder laden (mit Token, daher als Blob)
 async function refreshCams(){
   const imgs = document.querySelectorAll('img.cam'); if(!imgs.length) return;
@@ -1331,6 +1419,66 @@ function updateStatus(){
   else { s.className='status offline'; s.textContent='● Einrichten'; }
 }
 
+// ---- Dashboard: Uhr, Wetter, Aufgaben ----
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function updateClock(){
+  const d=new Date(); const t=el('#clTime'), s=el('#clDate');
+  if(t) t.textContent = d.toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
+  if(s) s.textContent = d.toLocaleDateString('de-CH',{weekday:'long',day:'numeric',month:'long'});
+}
+const WX = {0:['☀️','Klar'],1:['🌤️','Heiter'],2:['⛅','Teils bewölkt'],3:['☁️','Bewölkt'],45:['🌫️','Nebel'],48:['🌫️','Nebel'],51:['🌦️','Nieselregen'],53:['🌦️','Nieselregen'],55:['🌦️','Nieselregen'],61:['🌧️','Regen'],63:['🌧️','Regen'],65:['🌧️','Starkregen'],71:['🌨️','Schnee'],73:['🌨️','Schnee'],75:['❄️','Starker Schnee'],77:['🌨️','Schneegriesel'],80:['🌦️','Schauer'],81:['🌧️','Schauer'],82:['⛈️','Starke Schauer'],85:['🌨️','Schneeschauer'],86:['🌨️','Schneeschauer'],95:['⛈️','Gewitter'],96:['⛈️','Gewitter'],99:['⛈️','Gewitter']};
+let wxNow = null;
+function setWx(code,temp){ const w=WX[code]||['🌡️','']; wxNow={ temp:Math.round(temp), desc:w[1], icon:w[0] }; const i=el('#wxIco'),t=el('#wxTemp'),d=el('#wxDesc'); if(i)i.textContent=w[0]; if(t)t.textContent=Math.round(temp)+'°'; if(d)d.textContent=w[1]; }
+// Tagesübersicht: Begrüssung + Wetter + fällige Aufgaben
+function briefing(){
+  const h=new Date().getHours();
+  const gr = h<5?'Gute Nacht':h<11?'Guten Morgen':h<18?'Hallo':h<22?'Guten Abend':'Schönen späten Abend';
+  const parts=[gr+' Kamil.'];
+  if(wxNow) parts.push('Draussen sind es '+wxNow.temp+' Grad, '+wxNow.desc+'.');
+  const todayStr=new Date().toISOString().slice(0,10);
+  const open = tasks.filter(t=>!t.done);
+  const due = open.filter(t=>t.due && t.due<=todayStr);
+  if(due.length) parts.push('Fällig heute oder überfällig: '+due.map(t=>t.text).join(', ')+'.');
+  parts.push(open.length ? ('Du hast '+open.length+' offene Aufgabe'+(open.length>1?'n':'')+'.') : 'Keine offenen Aufgaben. 🎉');
+  const text = parts.join(' ');
+  switchView('chat'); sfxReceive(); addMsg('chat', text, 'jarvis'); speak(text);
+}
+async function loadWeather(lat,lon){
+  try{
+    const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&timezone=auto');
+    const j=await r.json(); if(j.current){ setWx(j.current.weather_code, j.current.temperature_2m); localStorage.setItem('wx_loc',lat+','+lon); }
+  }catch(e){ const d=el('#wxDesc'); if(d) d.textContent='Wetter nicht verfügbar'; }
+}
+function initWeather(){
+  const saved=localStorage.getItem('wx_loc');
+  const fb=()=>{ if(saved){ const p=saved.split(','); loadWeather(p[0],p[1]); } else loadWeather(47.37,8.54); }; // Fallback: Zürich
+  if(navigator.geolocation){ navigator.geolocation.getCurrentPosition(p=>loadWeather(p.coords.latitude,p.coords.longitude), fb, {timeout:8000}); }
+  else fb();
+}
+let tasks = JSON.parse(localStorage.getItem('jarvis_tasks')||'[]');
+function saveTasks(){ localStorage.setItem('jarvis_tasks', JSON.stringify(tasks)); }
+function fmtDue(d){ const p=d.split('-'); return p.length===3 ? p[2]+'.'+p[1]+'.' : d; }
+function renderTasks(){
+  const box=el('#taskList'); if(!box) return; box.innerHTML='';
+  if(!tasks.length){ box.innerHTML='<div class="taskEmpty">Keine Aufgaben. Tippe ＋ zum Hinzufügen.</div>'; return; }
+  const todayStr = new Date().toISOString().slice(0,10);
+  const order = tasks.map((t,i)=>({t,i})).sort((a,b)=> (a.t.done-b.t.done) || ((a.t.due||'9999')>(b.t.due||'9999')?1:-1));
+  order.forEach(({t,i})=>{
+    const isDue = t.due && !t.done && t.due <= todayStr;
+    const row=document.createElement('div'); row.className='taskItem'+(t.done?' done':'')+(isDue?' due':'');
+    row.innerHTML = '<div class="taskChk">'+(t.done?'✓':'')+'</div><div class="taskTxt">'+escHtml(t.text)+(t.due?' <span class="taskDue">'+(isDue?'⚠️ ':'')+fmtDue(t.due)+'</span>':'')+'</div><span class="taskDel">✕</span>';
+    row.querySelector('.taskChk').onclick=()=>{ t.done=!t.done; saveTasks(); renderTasks(); };
+    row.querySelector('.taskDel').onclick=()=>{ tasks.splice(i,1); saveTasks(); renderTasks(); };
+    box.appendChild(row);
+  });
+}
+function addTask(){
+  const text = prompt('Aufgabe oder Rechnung:'); if(!text) return;
+  const due = prompt('Fällig am? Format JJJJ-MM-TT (z.B. 2026-07-15). Leer lassen wenn egal.','') || '';
+  tasks.push({ text:text.trim(), due:due.trim(), done:false });
+  saveTasks(); renderTasks();
+}
+
 // ---- Boot-Startbildschirm ----
 (function(){
   const bootEl = el('#boot'), bs = el('#bootStatus');
@@ -1345,6 +1493,7 @@ function updateStatus(){
 
 // ---- Start ----
 buildDial(); renderHome(); renderScenes(); updateStatus();
+updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines();   // Dashboard
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
 if(haToken) haLoad();          // Home-Assistant-Geräte laden
