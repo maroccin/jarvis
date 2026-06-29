@@ -2425,7 +2425,7 @@ function alarmTimer(){
 }
 
 // ---- Animiertes Partikel-Netz im Hintergrund (performance-bewusst) ----
-(function(){
+(function(){ try{
   const cv = document.getElementById('bgfx'); if(!cv) return;
   const ctx = cv.getContext('2d'); if(!ctx) return;
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2479,7 +2479,7 @@ function alarmTimer(){
   let rt=null;
   window.addEventListener('resize', ()=>{ clearTimeout(rt); rt=setTimeout(()=>{ setup(); draw(); }, 200); });
   document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stop(); else if(!reduced) start(); });
-})();
+}catch(e){ /* Hintergrund-Effekt ist Beiwerk – darf den Start nie blockieren */ } })();
 
 // ---- Boot-Startbildschirm ----
 (function(){
