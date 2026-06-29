@@ -960,10 +960,24 @@ function startRecog(){
 let micWanted=false;
 function resumeAfter(){ busy=false; if(liveMode){ setTimeout(startRecog,300); } }
 
+// iPhone/iPad erkennen – dort ist die Browser-Spracherkennung gesperrt/unzuverlässig
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+let iosHintShown=false;
+
 // Push-to-talk (einmal sprechen)
 function toggleMic(view){
   if(view) switchView(view);
-  if(!recog){ addMsg(currentView,'🎤 Dieser Browser kann keine Spracheingabe (z.B. Safari am iPhone). Nutze **Edge** oder **Chrome** – oder tippe einfach. ⌨️','jarvis'); return; }
+  // Am iPhone: Browser-Spracherkennung funktioniert nicht. Stattdessen Tastatur-Diktat anbieten.
+  if(IS_IOS || !recog){
+    const box = inputBox(currentView);
+    if(box){ box.focus(); try{ box.click(); }catch(_){} }   // Tastatur hochholen
+    if(!iosHintShown){
+      iosHintShown=true;
+      addMsg(currentView,'🎤 Am iPhone spricht man am besten direkt über die **Tastatur**: Tipp unten rechts auf der Tastatur das kleine **🎤-Symbol** und sprich – dein iPhone schreibt es ins Feld. Dann auf ➤ senden.\n\n_(Die normale Browser-Sprachsteuerung sperrt Apple leider.)_','jarvis');
+    }
+    return;
+  }
   // Audio-Kontext „aufwecken" (manche Browser blocken Ton bis zur ersten Aktion)
   try{ const a=ac(); if(a&&a.state==='suspended')a.resume(); }catch(_){}
   if(recogState==='listening' || recogState==='starting'){ micWanted=false; try{ recog.stop(); }catch(_){} return; }
@@ -972,6 +986,7 @@ function toggleMic(view){
 
 // Live-Gespräch an/aus
 function toggleLive(){
+  if(IS_IOS){ addMsg(currentView,'🎙️ Das durchgehende Live-Gespräch sperrt Apple am iPhone leider. Nutze stattdessen das **🎤 auf der iPhone-Tastatur** zum Diktieren – oder das Live-Gespräch am **Laptop** (Chrome/Edge). 💡','jarvis'); return; }
   if(!recog){ addMsg(currentView,'🎙️ Das Live-Gespräch braucht **Edge** oder **Chrome**.','jarvis'); return; }
   liveMode=!liveMode; updateLiveBtn();
   if(liveMode){
