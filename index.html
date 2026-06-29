@@ -605,7 +605,11 @@
         <option value="dictate">Diktat – nur ins Feld schreiben, du sendest selbst</option>
       </select>
       <label>🎬 YouTube API-Key <span style="color:var(--muted);">– optional; damit „Spiele …" sofort das genau richtige Video startet (gratis bei console.cloud.google.com → YouTube Data API)</span></label>
-      <input id="ytKeyInput" type="password" placeholder="AIza… (optional – geht auch ohne)">
+      <div style="display:flex;gap:8px;">
+        <input id="ytKeyInput" type="password" placeholder="AIza… (optional – geht auch ohne)" style="flex:1;">
+        <button class="close" onclick="testYouTube()">🔎 Test</button>
+      </div>
+      <div id="ytStatus" style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.4;"></div>
       <p style="margin-top:14px;font-size:12px;">Noch keinen Key? Hol ihn auf <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</p>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
@@ -1524,12 +1528,39 @@ async function fetchJsonT(url, ms){
   try{ const r=await fetch(url,{signal:c.signal}); clearTimeout(t); if(!r.ok) return null; return await r.json(); }
   catch(e){ clearTimeout(t); return null; }
 }
+// YouTube-Key direkt fragen – gibt {id} ODER {error:'Klartext-Grund'} zurück
+async function ytSearchId(query, key){
+  try{
+    const r = await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q='+encodeURIComponent(query)+'&key='+key);
+    const j = await r.json().catch(()=>null);
+    if(r.ok && j && j.items && j.items[0] && j.items[0].id && j.items[0].id.videoId) return { id:j.items[0].id.videoId };
+    const reason = (j && j.error && (j.error.errors && j.error.errors[0] && j.error.errors[0].reason)) || '';
+    const msg = (j && j.error && j.error.message) || ('HTTP '+r.status);
+    return { error: msg, reason };
+  }catch(e){ return { error: e.message||'Netzwerkfehler', reason:'network' }; }
+}
+// Test-Knopf in den Einstellungen
+async function testYouTube(){
+  const key = el('#ytKeyInput').value.trim();
+  const s = el('#ytStatus'); if(!s) return;
+  if(!key){ s.innerHTML='Kein Key eingegeben – „Spiele …" nutzt dann die (unzuverlässigen) Gratis-Dienste.'; return; }
+  s.style.color='var(--muted)'; s.textContent='🔎 Teste Key…';
+  const r = await ytSearchId('test', key);
+  if(r.id){ s.style.color='var(--green)'; s.innerHTML='✅ Key funktioniert! Nicht vergessen: unten <b>Speichern</b> drücken.'; return; }
+  s.style.color='var(--red)';
+  let tip = r.error||'Unbekannter Fehler';
+  if(/accessNotConfigured|not been used|disabled/i.test(r.error||'')) tip = '❌ Die <b>YouTube Data API v3</b> ist für dieses Projekt noch nicht aktiviert.<br>→ console.cloud.google.com → „APIs & Dienste" → „Bibliothek" → „YouTube Data API v3" → <b>Aktivieren</b>. (Nach Aktivierung 1–2 Min warten.)';
+  else if(/API_KEY_INVALID|invalid|bad request/i.test(r.error||'')||r.reason==='badRequest') tip = '❌ Der Key wird als ungültig abgelehnt. Hast du ihn komplett kopiert (beginnt mit <b>AIza</b>)? Evtl. ein neuer Key nötig.';
+  else if(/referer|referrer|blocked|requests-from/i.test(r.error||'')) tip = '❌ Der Key hat eine <b>Webseiten-Einschränkung</b>, die Jarvis blockt.<br>→ In Google Cloud beim Key unter „Anwendungseinschränkungen" auf <b>Keine</b> stellen (oder maroccin.github.io erlauben).';
+  else if(/quota|exceeded/i.test(r.error||'')) tip = '❌ Tageslimit erreicht – morgen wieder, oder neuen Key.';
+  s.innerHTML = tip;
+}
 // Suchbegriff → echte Video-ID (mehrere Wege, erster Treffer gewinnt)
 async function resolveYouTube(query){
   // 1) Offizieller YouTube-Key – am zuverlässigsten
   if(ytKey){
-    const j = await fetchJsonT('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q='+encodeURIComponent(query)+'&key='+ytKey, 5000);
-    if(j && j.items && j.items[0] && j.items[0].id && j.items[0].id.videoId) return j.items[0].id.videoId;
+    const r = await ytSearchId(query, ytKey);
+    if(r.id) return r.id;
   }
   // 2) Ohne Key: Piped-Instanzen
   for(const base of ['https://pipedapi.kavin.rocks','https://pipedapi.adminforge.de','https://pipedapi.leptons.xyz']){
