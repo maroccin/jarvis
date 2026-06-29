@@ -321,8 +321,11 @@
     .brand { padding: 2px 0 4px; }
     .brand h1 { font-size: 15px; letter-spacing: 3px; }
     .orb { width: 32px; height: 32px; }
-    /* Dreh-Wähler bleibt auch am Handy – mit dem Finger drehbar */
-    #dial { display: block; margin: 4px auto 8px; }
+    /* Dreh-Wähler bleibt auch am Handy – mit dem Finger drehbar, aber kompakter */
+    #dial { display: block; width: 150px; height: 150px; margin: 2px auto 6px; }
+    .dialItem { width: 38px; height: 38px; font-size: 17px; }
+    #dialHub { width: 66px; height: 66px; }
+    .dialHubLabel { font-size: 9px; }
     #navlist { display: none; }
     .sidefoot { margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; width: 100%; }
     .livebtn { margin-bottom: 0; padding: 9px 14px; font-size: 12px; white-space: nowrap; }
@@ -451,6 +454,7 @@
           <div class="scene" onclick="scene('Gute Nacht', false)">🌙 Gute Nacht</div>
           <div class="scene" onclick="scene('Filmabend', 'movie')">🎬 Filmabend</div>
           <div class="scene" onclick="scene('Alles aus', false)">⏻ Alles aus</div>
+          <div class="scene" onclick="haLoad()" title="Gerätestatus neu laden">🔄 Aktualisieren</div>
         </div>
         <div class="scene-row" id="huePresets">
           <div class="scene" onclick="huePreset({on:true,ct:447,bri:200,effect:'none'})">🔥 Warmweiss</div>
@@ -681,8 +685,8 @@ function buildDial(){
   layoutDial(); enableDialDrag();
 }
 function layoutDial(){
-  const items = document.querySelectorAll('.dialItem'); if(!items.length) return;
-  const R=72, cx=98, cy=98, N=CATS.length, step=360/N;
+  const dial = el('#dial'); const items = document.querySelectorAll('.dialItem'); if(!items.length||!dial) return;
+  const size = dial.clientWidth || 196; const cx=size/2, cy=size/2, R=size*0.37, N=CATS.length, step=360/N;
   // welches Icon ist gerade oben (-90°)?
   let near=0, best=1e9;
   for(let k=0;k<N;k++){ const a=-90+k*step+dialRot; let d=((a+90)%360+360)%360; if(d>180)d=360-d; if(d<best){best=d;near=k;} }
@@ -754,6 +758,9 @@ async function askClaude(view, userText){
   hist.push({ role:'user', content:userText });
   let sys = PROMPTS[view];
   if(levels[view]) sys += STYLE[levels[view]] || '';
+  if(view==='chat' && myLoc){
+    sys += '\n\nKamils ungefährer Standort: '+myLoc.lat+','+myLoc.lon+'. Bei Orts-/Navigationsfragen („wo ist die nächste Tankstelle/Restaurant/Apotheke", „navigiere zu …", „in der Nähe") gib einen anklickbaren Google-Maps-Link: [📍 Auf Karte öffnen](https://www.google.com/maps/search/SUCHE/@'+myLoc.lat+','+myLoc.lon+',15z) – ersetze SUCHE durch den URL-kodierten Suchbegriff.';
+  }
   const tools = [];
   if (webOn && (view==='trading' || view==='money' || view==='shop'))
     tools.push({ type:'web_search_20250305', name:'web_search', max_uses:5 });
@@ -915,6 +922,9 @@ function handleVoice(txt){
     tasks.push({ text: rem[1].trim(), due:'', done:false }); saveTasks(); renderTasks();
     switchView('home'); say('Notiert: '+rem[1].trim()); return;
   }
+  // Navigation / Orte (Google Maps)
+  const place = matchPlaces(low, txt);
+  if(place){ openPlaces(place); return; }
   // 1) Bereich wechseln
   const nav = matchNav(low);
   if(nav){ switchView(nav.view); say('Wechsle zu '+nav.label+'.'); return; }
@@ -1444,7 +1454,28 @@ function updateClock(){
   if(s) s.textContent = d.toLocaleDateString('de-CH',{weekday:'long',day:'numeric',month:'long'});
 }
 const WX = {0:['☀️','Klar'],1:['🌤️','Heiter'],2:['⛅','Teils bewölkt'],3:['☁️','Bewölkt'],45:['🌫️','Nebel'],48:['🌫️','Nebel'],51:['🌦️','Nieselregen'],53:['🌦️','Nieselregen'],55:['🌦️','Nieselregen'],61:['🌧️','Regen'],63:['🌧️','Regen'],65:['🌧️','Starkregen'],71:['🌨️','Schnee'],73:['🌨️','Schnee'],75:['❄️','Starker Schnee'],77:['🌨️','Schneegriesel'],80:['🌦️','Schauer'],81:['🌧️','Schauer'],82:['⛈️','Starke Schauer'],85:['🌨️','Schneeschauer'],86:['🌨️','Schneeschauer'],95:['⛈️','Gewitter'],96:['⛈️','Gewitter'],99:['⛈️','Gewitter']};
-let wxNow = null;
+let wxNow = null, myLoc = null;
+function mapsUrl(q){
+  const enc = encodeURIComponent(q);
+  return myLoc ? 'https://www.google.com/maps/search/'+enc+'/@'+myLoc.lat+','+myLoc.lon+',15z'
+               : 'https://www.google.com/maps/search/?api=1&query='+enc;
+}
+function openPlaces(query){
+  const url = mapsUrl(query);
+  switchView('chat'); sfxReceive();
+  addMsg('chat','🗺️ Ich habe **'+escHtml(query)+'** in deiner Nähe herausgesucht:\n[📍 Auf Google Maps öffnen]('+url+')','jarvis');
+  speak('Ich habe '+query+' in deiner Nähe herausgesucht. Tipp auf den Link.');
+  try{ window.open(url,'_blank'); }catch(e){}
+}
+function matchPlaces(low, txt){
+  const trig = /(wo ist|wo finde ich|wo gibt|finde mir|finde die|n[äa]chste|in der n[äa]he|navigier|bring mich|fahr mich|route zu|weg zu|zeig mir den weg)/.test(low);
+  const places = /tankstelle|restaurant|supermarkt|laden|gesch[äa]ft|\bshop\b|apotheke|caf[eé]|b[äa]ckerei|geldautomat|bankomat|parkplatz|hotel|\barzt\b|spital|krankenhaus|kino|fitness|coiffeur|fris[öo]r|baumarkt|metzg|\bpost\b|\bbank\b|bar\b|kiosk/.exec(low);
+  if(!trig && !places) return null;
+  let q=null;
+  if(places) q = places[0];
+  else { const m = txt.match(/(?:navigiere?\s+zu\s+|bring\s+mich\s+zu\s+|fahr\s+mich\s+zu\s+|route\s+zu\s+|weg\s+zu\s+|wo\s+ist\s+|finde\s+)(?:die\s+|der\s+|das\s+|zum\s+|zur\s+|n[äa]chste\s+)?(.+)/i); if(m) q=m[1]; }
+  return q ? q.trim() : null;
+}
 function setWx(code,temp){ const w=WX[code]||['🌡️','']; wxNow={ temp:Math.round(temp), desc:w[1], icon:w[0] }; const i=el('#wxIco'),t=el('#wxTemp'),d=el('#wxDesc'); if(i)i.textContent=w[0]; if(t)t.textContent=Math.round(temp)+'°'; if(d)d.textContent=w[1]; }
 // Tagesübersicht: Begrüssung + Wetter + fällige Aufgaben
 function briefing(){
@@ -1457,6 +1488,10 @@ function briefing(){
   const due = open.filter(t=>t.due && t.due<=todayStr);
   if(due.length) parts.push('Fällig heute oder überfällig: '+due.map(t=>t.text).join(', ')+'.');
   parts.push(open.length ? ('Du hast '+open.length+' offene Aufgabe'+(open.length>1?'n':'')+'.') : 'Keine offenen Aufgaben. 🎉');
+  if(Object.keys(haEntities).length){
+    const onN = Object.values(haEntities).filter(e=>(e.domain==='light'||e.domain==='switch')&&haIsOn(e)).length;
+    parts.push(onN ? (onN+' Lampen oder Geräte sind gerade an.') : 'Alle Lampen sind aus.');
+  }
   const text = parts.join(' ');
   switchView('chat'); sfxReceive(); addMsg('chat', text, 'jarvis'); speak(text);
 }
@@ -1465,6 +1500,7 @@ async function loadWeather(lat,lon){
   try{
     const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto');
     const j=await r.json();
+    myLoc = { lat:+lat, lon:+lon };
     if(j.current){ setWx(j.current.weather_code, j.current.temperature_2m); localStorage.setItem('wx_loc',lat+','+lon); }
     if(j.hourly) wxHourly = j.hourly;
     if(j.daily){ wxDaily = j.daily; renderForecast(); }
@@ -1518,7 +1554,12 @@ function renderTasks(){
     row.querySelector('.taskDel').onclick=()=>{ tasks.splice(i,1); saveTasks(); renderTasks(); };
     box.appendChild(row);
   });
+  if(tasks.some(t=>t.done)){
+    const c=document.createElement('div'); c.className='taskEmpty'; c.style.cursor='pointer'; c.style.color='var(--cyan)';
+    c.textContent='🧹 Erledigte entfernen'; c.onclick=clearDoneTasks; box.appendChild(c);
+  }
 }
+function clearDoneTasks(){ tasks = tasks.filter(t=>!t.done); saveTasks(); renderTasks(); }
 function addTask(){
   const text = prompt('Aufgabe oder Rechnung:'); if(!text) return;
   const due = prompt('Fällig am? Format JJJJ-MM-TT (z.B. 2026-07-15). Leer lassen wenn egal.','') || '';
@@ -1540,6 +1581,8 @@ function addTask(){
 
 // ---- Start ----
 buildDial(); renderHome(); renderScenes(); updateStatus();
+window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
+setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
 updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines();   // Dashboard
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
