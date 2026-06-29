@@ -52,6 +52,8 @@
   }
   @keyframes ringspin { to { transform: translate(-50%,-50%) rotate(360deg); } }
   #sidebar, #main { position: relative; z-index: 1; }
+  /* Animiertes Partikel-Netz im Hintergrund */
+  #bgfx { position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.55; }
 
   /* ---------- Seitenleiste ---------- */
   #sidebar {
@@ -404,6 +406,7 @@
 </style>
 </head>
 <body>
+  <canvas id="bgfx"></canvas>
   <!-- Boot-Startbildschirm -->
   <div id="boot">
     <div id="bootReactor"><span class="r3"></span></div>
@@ -2420,6 +2423,63 @@ function alarmTimer(){
   const u=new SpeechSynthesisUtterance('Dein Timer ist abgelaufen!'); u.lang='de-DE'; if(bestVoice)u.voice=bestVoice;
   if(window.speechSynthesis){ speechSynthesis.cancel(); speechSynthesis.speak(u); }
 }
+
+// ---- Animiertes Partikel-Netz im Hintergrund (performance-bewusst) ----
+(function(){
+  const cv = document.getElementById('bgfx'); if(!cv) return;
+  const ctx = cv.getContext('2d'); if(!ctx) return;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W=0, H=0, parts=[], mobile=false, raf=null, dpr=Math.min(window.devicePixelRatio||1, 2);
+  function setup(){
+    W=window.innerWidth; H=window.innerHeight; mobile = W<760;
+    cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    // wenige Partikel am Handy (keine Linien) → kein Ruckeln; mehr am Laptop
+    const n = mobile ? 14 : Math.min(64, Math.round(W*H/26000));
+    parts = [];
+    for(let i=0;i<n;i++){
+      parts.push({ x:Math.random()*W, y:Math.random()*H,
+        vx:(Math.random()-0.5)*(mobile?0.12:0.28), vy:(Math.random()-0.5)*(mobile?0.12:0.28),
+        r:Math.random()*1.6+0.6 });
+    }
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    // Verbindungslinien nur am Laptop (das ist der teure Teil)
+    if(!mobile){
+      for(let i=0;i<parts.length;i++){
+        for(let j=i+1;j<parts.length;j++){
+          const a=parts[i], b=parts[j], dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy;
+          if(d2<16000){
+            const al=(1-d2/16000)*0.5;
+            ctx.strokeStyle='rgba(53,200,255,'+al.toFixed(3)+')';
+            ctx.lineWidth=0.6; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+          }
+        }
+      }
+    }
+    for(const p of parts){
+      ctx.fillStyle='rgba(95,240,255,0.9)';
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
+    }
+  }
+  function step(){
+    for(const p of parts){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0||p.x>W) p.vx*=-1;
+      if(p.y<0||p.y>H) p.vy*=-1;
+    }
+    draw();
+    raf = requestAnimationFrame(step);
+  }
+  function start(){ if(raf||document.hidden) return; raf=requestAnimationFrame(step); }
+  function stop(){ if(raf){ cancelAnimationFrame(raf); raf=null; } }
+  setup(); draw();
+  if(!reduced) start();               // bei „weniger Bewegung" nur ein statisches Sternenbild
+  let rt=null;
+  window.addEventListener('resize', ()=>{ clearTimeout(rt); rt=setTimeout(()=>{ setup(); draw(); }, 200); });
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) stop(); else if(!reduced) start(); });
+})();
 
 // ---- Boot-Startbildschirm ----
 (function(){
