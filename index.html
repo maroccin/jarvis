@@ -29,15 +29,20 @@
       radial-gradient(1200px 800px at 80% -10%, #0c2138 0%, var(--bg) 55%);
     color: var(--text); display: flex; height: 100vh; height: 100dvh; overflow: hidden; position: relative;
   }
-  /* HUD-Gitter über dem ganzen Bildschirm */
+  /* HUD-Gitter über dem ganzen Bildschirm – leuchtet & wandert langsam */
   body::before {
     content:""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
     background-image:
-      linear-gradient(rgba(53,200,255,0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(53,200,255,0.05) 1px, transparent 1px);
-    background-size: 44px 44px;
-    mask-image: radial-gradient(ellipse at 50% 45%, #000 30%, transparent 85%);
-    -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 30%, transparent 85%);
+      linear-gradient(rgba(95,240,255,0.13) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(95,240,255,0.13) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(ellipse at 50% 45%, #000 35%, transparent 88%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 45%, #000 35%, transparent 88%);
+    animation: gridpan 14s linear infinite;
+  }
+  @keyframes gridpan {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 46px 46px, 46px 46px; }
   }
   /* Schwebender, rotierender Energie-Ring im Hintergrund */
   body::after {
@@ -371,7 +376,7 @@
 
     /* --- Handy-Performance: schwere Dauer-Effekte abschalten (verhindert Ruckeln/Springen) --- */
     body::after { display: none; }              /* grosser rotierender Hintergrund-Ring – sehr GPU-lastig */
-    body::before { animation: none; }
+    /* Gitter-Animation (gridpan) bleibt AN – ist leicht und das sichtbare Bewegungs-Element */
     .view::before { animation: none !important; opacity: .25; }  /* Scan-Sweep aus */
     .view::after { animation: none; }            /* schwebendes Riesen-Emoji nicht animieren */
     .msg { animation: scanin .4s ease !important; }  /* Nachrichten: nur Einblenden, kein Dauer-Schweben */
