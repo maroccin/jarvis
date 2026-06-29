@@ -296,6 +296,16 @@
   .scene:hover { border-color: var(--cyan); background: rgba(53,200,255,0.14); box-shadow:0 0 16px rgba(53,200,255,0.22); transform:translateY(-1px); }
   .note { font-size:12px; color:var(--muted); background: rgba(255,177,62,0.07); border:1px solid rgba(255,177,62,0.3); border-radius:10px; padding:10px 14px; margin: 4px 0 18px; }
 
+  /* ---------- Timer-Anzeige ---------- */
+  #timerBadge { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 40; display: none; align-items: center; gap: 8px; cursor: pointer;
+    font-family: "Orbitron", sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 1px;
+    color: #eafcff; padding: 10px 20px; border-radius: 30px;
+    background: linear-gradient(135deg, rgba(14,30,52,0.9), rgba(8,18,34,0.85));
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--cyan); box-shadow: 0 0 24px rgba(53,200,255,0.4); }
+  #timerBadge.show { display: flex; animation: floaty 4s ease-in-out infinite; }
+
   /* ---------- Einstellungen ---------- */
   #overlay { position: fixed; inset: 0; background: rgba(3,7,14,0.82); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 50; }
   #overlay.show { display: flex; }
@@ -539,6 +549,9 @@
     </div>
 
   </div>
+
+  <!-- Timer-Anzeige -->
+  <div id="timerBadge" onclick="cancelTimer()" title="Tippen zum Abbrechen"></div>
 
   <!-- Einstellungen -->
   <div id="overlay">
@@ -831,7 +844,10 @@ async function respond(view, q){
 function ask(view, q){ switchView(view); sfxSend(); addMsg(view, q,'user'); respond(view, q); }
 function send(view){
   const inp = inputBox(view); const q = inp.value.trim(); if(!q) return;
-  inp.value=''; sfxSend(); addMsg(view, q,'user'); respond(view, q);
+  inp.value=''; sfxSend(); addMsg(view, q,'user');
+  const tsec = matchTimer(q.toLowerCase());   // getippter Timer
+  if(tsec){ startTimer(tsec); return; }
+  respond(view, q);
 }
 
 // ---- Sprachausgabe ----
@@ -942,6 +958,25 @@ function handleVoice(txt){
   if(/was steht (heute |alles )?an|tages.?(übersicht|uebersicht|briefing)|über(blick|sicht)|brief mich|was ist heute/.test(low)){
     briefing(); return;
   }
+  // Timer stoppen / wie lange noch
+  if(/(timer|wecker).*(abbrech|stopp|stop|cancel|aus)|stopp.*(timer|wecker)|cancel.*(timer|wecker)/.test(low)){
+    if(timerInt||timerEnd){ cancelTimer(false); busy=false; return; }
+    say('Kein Timer läuft gerade.'); return;
+  }
+  if(/(wie lange|wieviel|noch|verbleib).*(timer|wecker|zeit)|timer.*(noch|rest)/.test(low)){
+    if(timerEnd){ const rem=Math.max(0,Math.round((timerEnd-Date.now())/1000)); say('Noch '+fmtTimer(rem)+' Minuten.'); }
+    else say('Kein Timer aktiv.'); busy=false; return;
+  }
+  // Timer / Wecker (vor der Aufgaben-Erkennung)
+  const tsec = matchTimer(low);
+  if(tsec){ startTimer(tsec); return; }
+  // Medien öffnen
+  const media = matchMedia(low);
+  if(media){ openMedia(media); return; }
+  // Hilfe: Was kannst du?
+  if(/(was kannst du|was kann jarvis|befehle|hilfe|hilf mir|help|kommandos|anleitung)/.test(low)){
+    jarvisHelp(); return;
+  }
   // Aufgabe/Erinnerung per Sprache
   const rem = txt.match(/(?:erinnere?\s+mich\s+(?:an\s+|daran[,]?\s+)?|merke?\s+dir[,]?\s+|neue\s+aufgabe[:,]?\s+|notiere?\s+|aufgabe[:,]\s+)(.+)/i);
   if(rem && rem[1]){
@@ -966,6 +1001,47 @@ function handleVoice(txt){
   addMsg(currentView, txt, 'user');
   respond(currentView, txt);
 }
+// ---- Medien öffnen ----
+const MEDIA_SITES = [
+  { re:/youtube/, url:'https://www.youtube.com', label:'YouTube' },
+  { re:/spotify/, url:'https://open.spotify.com', label:'Spotify' },
+  { re:/netflix/, url:'https://www.netflix.com', label:'Netflix' },
+  { re:/instagram/, url:'https://www.instagram.com', label:'Instagram' },
+  { re:/tiktok/, url:'https://www.tiktok.com', label:'TikTok' },
+  { re:/whatsapp/, url:'https://web.whatsapp.com', label:'WhatsApp' },
+  { re:/gmail|google mail/, url:'https://mail.google.com', label:'Gmail' },
+  { re:/maps|google maps/, url:'https://maps.google.com', label:'Google Maps' },
+  { re:/amazon/, url:'https://www.amazon.de', label:'Amazon' },
+  { re:/ricardo|tutti/, url:'https://www.ricardo.ch', label:'Ricardo' },
+  { re:/aliexpress/, url:'https://www.aliexpress.com', label:'AliExpress' },
+  { re:/news|nachrichten/, url:'https://news.google.com/home?hl=de', label:'Google News' },
+  { re:/wetter/, url:'https://www.meteoschweiz.admin.ch', label:'MeteoSchweiz' },
+  { re:/rechner|calculator|taschenrechner/, url:'https://www.google.com/search?q=rechner', label:'Rechner' },
+  { re:/translate|übersetze|übersetzer/, url:'https://translate.google.com', label:'Google Übersetzer' },
+  { re:/chatgpt|gpt/, url:'https://chat.openai.com', label:'ChatGPT' },
+];
+function matchMedia(low){
+  const trig = /(öffne|starte|zeig|spiele|geh auf|besuche|lade|launch)\b/.test(low);
+  if(!trig) return null;
+  for(const s of MEDIA_SITES) if(s.re.test(low)) return s;
+  return null;
+}
+function openMedia(site){
+  sfxReceive(); switchView('chat');
+  addMsg('chat','▶️ Öffne **'+site.label+'**…\n[Jetzt öffnen]('+site.url+')','jarvis');
+  speak('Okay, ich öffne '+site.label+'.');
+  try{ window.open(site.url,'_blank'); }catch(e){}
+  busy=false;
+}
+
+// ---- Hilfe: Alle Sprachbefehle ----
+function jarvisHelp(){
+  const txt = `Hier sind meine Sprachbefehle:\n\n🕐 **Timer** – „Stell Timer auf 10 Minuten" · „Timer abbrechen" · „Wie lange noch?"\n📍 **Navigation** – „Wo ist die nächste Tankstelle?" · „Navigiere zu Coop"\n🏠 **Smart Home** – „Licht aus" · „Alles an" · „Routine Gemütlich"\n▶️ **Medien** – „Öffne YouTube" · „Starte Spotify" · „Öffne Netflix"\n📋 **Aufgaben** – „Notiere Zahnarzt" · „Erinnere mich an Miete"\n🌤️ **Briefing** – „Was steht heute an?" · „Tagesübersicht"\n📊 **Bereiche** – „Wechsle zu Trading" · „Zeig Smart Home"\n🎙️ **Gespräch** – „Stopp Gespräch" (beendet Live-Modus)\n\nOder einfach eine Frage stellen – ich beantworte alles! 🤖`;
+  switchView('chat'); sfxReceive(); addMsg('chat', txt, 'jarvis');
+  speak('Ich erkläre dir meine Befehle. Schau auf den Bildschirm.');
+  busy=false;
+}
+
 function matchNav(low){
   if(!/(wechsl|wechsel|bereich|geh|gehe|öffne|oeffne|zeig|zeige|spring|navigier|tab)/.test(low)) return null;
   const targets = [
@@ -1604,6 +1680,51 @@ function addTask(){
   saveTasks(); renderTasks();
 }
 
+// ---- Timer / Wecker ----
+let timerEnd=null, timerInt=null;
+function matchTimer(low){
+  if(!/(timer|wecker|stoppuhr|countdown|erinnere mich in)/.test(low)) return null;
+  const m = low.match(/(\d+)\s*(stunden|stunde|std|h|minuten|minute|min|sekunden|sekunde|sek|s)\b/);
+  if(!m) return null;
+  const n=parseInt(m[1]), u=m[2];
+  const sec = /^(stunde|std|h)/.test(u)?n*3600 : /^(min)/.test(u)?n*60 : n;
+  return sec>0 ? sec : null;
+}
+function fmtTimer(s){ const m=Math.floor(s/60), x=s%60; return (m<10?'0':'')+m+':'+(x<10?'0':'')+x; }
+function startTimer(sec){
+  cancelTimer(true);
+  timerEnd = Date.now()+sec*1000;
+  const b=el('#timerBadge'); if(b) b.classList.add('show');
+  updateTimerBadge();
+  timerInt = setInterval(()=>{ if(updateTimerBadge()<=0){ clearInterval(timerInt); timerInt=null; alarmTimer(); } }, 1000);
+  const label = sec>=60 ? (Math.round(sec/60)+' Minuten') : (sec+' Sekunden');
+  switchView('chat'); addMsg('chat','⏱️ Timer auf **'+label+'** gestellt.','jarvis'); speak('Timer auf '+label+' gestellt.');
+}
+function updateTimerBadge(){
+  if(timerEnd==null) return 0;
+  const rem = Math.max(0, Math.round((timerEnd-Date.now())/1000));
+  const b=el('#timerBadge'); if(b) b.innerHTML='⏱️ '+fmtTimer(rem);
+  return rem;
+}
+function cancelTimer(silent){
+  if(timerInt){ clearInterval(timerInt); timerInt=null; }
+  timerEnd=null; const b=el('#timerBadge'); if(b) b.classList.remove('show');
+  if(!silent){ addMsg('chat','Timer abgebrochen.','jarvis'); }
+}
+function alarmBeep(){ const a=ac(); if(!a) return; if(a.state==='suspended')a.resume();
+  const o=a.createOscillator(),g=a.createGain(); o.type='square'; const t=a.currentTime;
+  o.frequency.setValueAtTime(880,t); g.gain.setValueAtTime(0.0001,t);
+  g.gain.exponentialRampToValueAtTime(0.13,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.32);
+  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t+0.34);
+}
+function alarmTimer(){
+  timerEnd=null; const b=el('#timerBadge'); if(b) b.classList.remove('show');
+  for(let i=0;i<6;i++) setTimeout(alarmBeep, i*420);
+  switchView('chat'); sfxReceive(); addMsg('chat','⏰ **Timer abgelaufen!**','jarvis');
+  const u=new SpeechSynthesisUtterance('Dein Timer ist abgelaufen!'); u.lang='de-DE'; if(bestVoice)u.voice=bestVoice;
+  if(window.speechSynthesis){ speechSynthesis.cancel(); speechSynthesis.speak(u); }
+}
+
 // ---- Boot-Startbildschirm ----
 (function(){
   const bootEl = el('#boot'), bs = el('#bootStatus');
@@ -1628,7 +1749,13 @@ setInterval(refreshCams, 4000);   // Kamera-Live-Bilder aktualisieren
 const _h = new Date().getHours();
 const _gruss = _h<5?'Gute Nacht':_h<11?'Guten Morgen':_h<18?'Hallo':_h<22?'Guten Abend':'Schönen späten Abend';
 if(apiKey){
-  addMsg('chat', _gruss+' Kamil 👋 Systeme online. Ich bin **Jarvis**.\n\nNeu: futuristisches Design, Boot-Sequenz, Sound-Effekte und mein Kern reagiert sichtbar, wenn ich spreche oder zuhöre. 🔵\n\nFrag mich was – per Text oder 🎙️ Live-Gespräch.','jarvis');
+  addMsg('chat', _gruss+' Kamil 👋 Systeme online. Ich bin **Jarvis**.\n\nFrag mich was – per Text oder 🎙️ Live-Gespräch. Sag **„Was kannst du?"** für alle Befehle.','jarvis');
+  // Auto-Morgenbriefing: einmal pro Tag beim ersten Öffnen am Morgen (6–11 Uhr)
+  const _todayKey = 'jarvis_briefed_'+new Date().toISOString().slice(0,10);
+  if(_h>=6 && _h<11 && !localStorage.getItem(_todayKey)){
+    localStorage.setItem(_todayKey,'1');
+    setTimeout(()=>{ briefing(); }, 3500);
+  }
 } else {
   addMsg('chat','Hallo Kamil 👋 Ich bin **Jarvis**.\n\nFüg noch deinen Claude API Key ein (**⚙️ Einstellungen** links), dann lege ich los. 🔑','jarvis');
   openSettings();
