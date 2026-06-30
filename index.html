@@ -2710,7 +2710,7 @@ async function agentMode(){
     // Plan anzeigen
     const planText = steps.map((s,i)=>`${i+1}. ${s}`).join('\n');
     const agentMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
-    if(agentMsgs.length) agentMsgs[agentMsgs.length-1].querySelector('.bubble').innerHTML =
+    if(agentMsgs.length) agentMsgs[agentMsgs.length-1].lastElementChild.innerHTML =
       formatText('🤖 **Agent-Plan für:** '+goal+'\n\n'+planText+'\n\n*Starte Ausführung…*');
 
     // Schritt 2: Jeden Schritt ausführen
@@ -2722,7 +2722,7 @@ async function agentMode(){
         `${context}Führe jetzt diesen Schritt aus: "${step}"\n\nGib ein konkretes, vollständiges Ergebnis. Sei präzise und praxisnah.`, 1500
       );
       const stepMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
-      if(stepMsgs.length) stepMsgs[stepMsgs.length-1].querySelector('.bubble').innerHTML =
+      if(stepMsgs.length) stepMsgs[stepMsgs.length-1].lastElementChild.innerHTML =
         formatText(`**Schritt ${i+1}/${steps.length}: ${step}**\n\n${result}`);
       context += `Schritt ${i+1} (${step}):\n${result}\n\n`;
     }
@@ -2755,7 +2755,7 @@ async function analyzeDoc(input){
       const d=await r.json();
       const txt=d.content?.[0]?.text||'Keine Antwort.';
       const msgs=document.querySelectorAll('#chat-chat .msg.jarvis');
-      if(msgs.length) msgs[msgs.length-1].querySelector('.bubble').innerHTML=formatText(txt);
+      if(msgs.length) msgs[msgs.length-1].lastElementChild.innerHTML=formatText(txt);
       else addMsg('chat',txt,'jarvis');
       if(speakOn) speak(txt.slice(0,200));
     }catch(err){ addMsg('chat','❌ Fehler: '+err.message,'jarvis'); }
@@ -2793,7 +2793,7 @@ async function analyzeImage(input){
       const txt = d.content?.[0]?.text || 'Keine Antwort erhalten.';
       // Letzte "analysiere…" Nachricht ersetzen
       const msgs = document.querySelectorAll('#chat-chat .msg.jarvis');
-      if(msgs.length) msgs[msgs.length-1].querySelector('.bubble').innerHTML = marked.parse ? marked.parse(txt) : txt;
+      if(msgs.length) msgs[msgs.length-1].lastElementChild.innerHTML = formatText(txt);
       else addMsg('chat', txt, 'jarvis');
       if(speakOn) speak(txt.slice(0,200));
     }catch(err){ addMsg('chat','❌ Fehler: '+err.message,'jarvis'); }
