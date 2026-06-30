@@ -529,6 +529,23 @@
     </div>
   </div>
 
+  <!-- Spotify Mini-Player -->
+  <div id="spPlayer" style="display:none;position:fixed;bottom:16px;right:16px;z-index:900;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 14px;min-width:220px;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,.4);">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <img id="spArt" src="" style="width:40px;height:40px;border-radius:6px;object-fit:cover;background:#222;">
+      <div style="flex:1;overflow:hidden;">
+        <div id="spTrack" style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">–</div>
+        <div id="spArtist" style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">–</div>
+      </div>
+    </div>
+    <div style="display:flex;justify-content:center;gap:12px;margin-top:10px;">
+      <button onclick="spotifyPrev()" title="Zurück" style="background:none;border:none;color:var(--text);font-size:18px;cursor:pointer;padding:4px;">⏮</button>
+      <button id="spPlayBtn" onclick="spotifyToggle()" title="Play/Pause" style="background:var(--accent);border:none;color:#000;font-size:16px;border-radius:50%;width:34px;height:34px;cursor:pointer;">▶</button>
+      <button onclick="spotifyNext()" title="Weiter" style="background:none;border:none;color:var(--text);font-size:18px;cursor:pointer;padding:4px;">⏭</button>
+      <button onclick="el('spPlayer').style.display='none'" title="Schliessen" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:4px;margin-left:4px;">✕</button>
+    </div>
+  </div>
+
   <!-- Hauptbereich -->
   <div id="main">
 
@@ -787,6 +804,15 @@
       <input id="haToken" type="password" placeholder="eyJhbGci…">
       <button class="save" style="margin-top:10px;width:100%;" onclick="haConnect()">🔗 Mit Home Assistant verbinden</button>
       <div id="haStatus" style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.4;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">🎵 Spotify verbinden</h2>
+      <p>Damit Jarvis Spotify per Sprache steuert: „Spiele Adele", „Pause", „Nächstes Lied". <b>Spotify Premium erforderlich</b> für Wiedergabe-Steuerung.</p>
+      <p style="font-size:12px;color:var(--muted);">Client-ID holen: <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> → App erstellen → Redirect URI: <code id="spRedirectUri" style="user-select:all;cursor:text;"></code></p>
+      <label>Client-ID</label>
+      <input id="spClientId" placeholder="32-stellige Spotify Client-ID">
+      <button class="save" style="margin-top:10px;width:100%;" onclick="spotifyConnect()">🔗 Mit Spotify verbinden</button>
+      <div id="spStatus" style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.4;"></div>
 
       <div class="row">
         <button class="save" onclick="saveSettings()">Speichern</button>
@@ -1405,6 +1431,18 @@ function handleVoice(txt){
   // Video zeigen ("Zeig mir ein Video über/von …")
   const vm = txt.match(/(?:zeig(?:e)?\s+mir\s+|spiel(?:e)?\s+|starte\s+)(?:ein\s+)?video\s+(?:über|ueber|von|mit|zu)\s+(.+)/i);
   if(vm && vm[1]){ openVideo(vm[1].trim()); addMsg('chat','🎬 Video: **'+escHtml(vm[1].trim())+'**','jarvis'); busy=false; return; }
+  // Spotify steuern
+  const spCmd = matchSpotify(low, txt);
+  if(spCmd){
+    if(spCmd.cmd==='pause') spotifyPause();
+    else if(spCmd.cmd==='resume') spotifyPlay(null);
+    else if(spCmd.cmd==='next') spotifyNext();
+    else if(spCmd.cmd==='prev') spotifyPrev();
+    else if(spCmd.cmd==='vol') spotifyVolume(spCmd.delta);
+    else if(spCmd.cmd==='nowplaying') spotifyNowPlaying();
+    else if(spCmd.cmd==='play') spotifyPlay(spCmd.q);
+    busy=false; return;
+  }
   // Musik abspielen ("Spiele ... von ...")
   const song = matchPlayMusic(low, txt);
   if(song){ playMusic(song); busy=false; return; }
@@ -2420,6 +2458,9 @@ function openSettings(){
   el('#nameInput').value=jName;
   el('#bgPatternInput').value=localStorage.getItem('jarvis_bg')||'grid';
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
+  if(el('#spClientId')) el('#spClientId').value = spClientId;
+  if(el('#spStatus')) el('#spStatus').textContent = spToken ? '✅ Verbunden' : (spClientId ? '⚠️ Noch nicht autorisiert – auf „Verbinden" klicken' : '');
+  if(el('spRedirectUri')) el('spRedirectUri').textContent = location.origin + location.pathname;
   el('#voiceModeInput').value=voiceMode;
   el('#ytKeyInput').value=ytKey;
   renderMem();
@@ -2451,6 +2492,195 @@ function importSettings(input){
   };
   reader.readAsText(file);
 }
+// ---- Spotify Integration (PKCE OAuth + Web API) ----
+let spClientId = localStorage.getItem('sp_client_id') || '';
+let spToken    = localStorage.getItem('sp_token') || '';
+let spRefresh  = localStorage.getItem('sp_refresh') || '';
+let spExpiry   = parseInt(localStorage.getItem('sp_expiry') || '0');
+let spPlaying  = false;
+let spPollTimer = null;
+
+function spRedirectUri(){ return location.origin + location.pathname; }
+
+async function spGenerateChallenge(){
+  const arr = new Uint8Array(64);
+  crypto.getRandomValues(arr);
+  const verifier = btoa(String.fromCharCode(...arr)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  return { verifier, challenge };
+}
+
+async function spotifyConnect(){
+  const id = (el('#spClientId')?.value || '').trim();
+  if(!id){ alert('Bitte zuerst die Client-ID eingeben.'); return; }
+  localStorage.setItem('sp_client_id', id);
+  spClientId = id;
+  const { verifier, challenge } = await spGenerateChallenge();
+  sessionStorage.setItem('sp_verifier', verifier);
+  const params = new URLSearchParams({
+    client_id: id,
+    response_type: 'code',
+    redirect_uri: spRedirectUri(),
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    scope: 'user-read-playback-state user-modify-playback-state user-read-currently-playing'
+  });
+  location.href = 'https://accounts.spotify.com/authorize?' + params;
+}
+
+async function spExchangeCode(code){
+  const verifier = sessionStorage.getItem('sp_verifier');
+  if(!verifier || !spClientId) return;
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: spClientId, grant_type: 'authorization_code',
+      code, redirect_uri: spRedirectUri(), code_verifier: verifier })
+  });
+  const d = await res.json();
+  if(d.access_token){ spSaveTokens(d); spUpdateStatus('✅ Verbunden!'); spPollNow(); }
+  else spUpdateStatus('❌ Fehler: ' + (d.error_description || d.error));
+  sessionStorage.removeItem('sp_verifier');
+  history.replaceState({}, '', location.pathname);
+}
+
+async function spRefreshToken(){
+  if(!spRefresh || !spClientId) return false;
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: spClientId, grant_type: 'refresh_token', refresh_token: spRefresh })
+  });
+  const d = await res.json();
+  if(d.access_token){ spSaveTokens(d); return true; }
+  return false;
+}
+
+function spSaveTokens(d){
+  spToken   = d.access_token;
+  if(d.refresh_token) spRefresh = d.refresh_token;
+  spExpiry  = Date.now() + (d.expires_in - 60) * 1000;
+  localStorage.setItem('sp_token', spToken);
+  localStorage.setItem('sp_refresh', spRefresh);
+  localStorage.setItem('sp_expiry', spExpiry);
+}
+
+async function spEnsureToken(){
+  if(!spToken) return false;
+  if(Date.now() > spExpiry) return await spRefreshToken();
+  return true;
+}
+
+async function spApi(method, path, body){
+  if(!await spEnsureToken()) return null;
+  const opts = { method, headers: { Authorization: 'Bearer ' + spToken } };
+  if(body){ opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const r = await fetch('https://api.spotify.com/v1' + path, opts);
+  if(r.status === 204 || r.status === 202) return {};
+  if(!r.ok) return null;
+  return r.json().catch(() => ({}));
+}
+
+async function spotifyPlay(query){
+  if(!spToken){ addMsg('chat','⚠️ Spotify nicht verbunden. Bitte in Einstellungen verbinden.','jarvis'); return; }
+  if(query){
+    const res = await spApi('GET', '/search?q=' + encodeURIComponent(query) + '&type=track&limit=1');
+    const track = res?.tracks?.items?.[0];
+    if(track){
+      await spApi('PUT', '/me/player/play', { uris: [track.uri] });
+      addMsg('chat','🎵 Spiele **' + escHtml(track.name) + '** von **' + escHtml(track.artists[0].name) + '**','jarvis');
+      speak('Spiele ' + track.name);
+      setTimeout(spPollNow, 1500);
+      return;
+    }
+  }
+  await spApi('PUT', '/me/player/play', {});
+  addMsg('chat','▶️ Wiedergabe fortgesetzt.','jarvis');
+  setTimeout(spPollNow, 1500);
+}
+
+async function spotifyPause(){
+  await spApi('PUT', '/me/player/pause', {});
+  spPlaying = false;
+  const b = el('spPlayBtn'); if(b) b.textContent = '▶';
+  addMsg('chat','⏸ Spotify pausiert.','jarvis');
+}
+
+async function spotifyToggle(){
+  spPlaying ? spotifyPause() : spotifyPlay(null);
+}
+
+async function spotifyNext(){
+  await spApi('POST', '/me/player/next', {});
+  addMsg('chat','⏭ Nächstes Lied.','jarvis');
+  setTimeout(spPollNow, 1500);
+}
+
+async function spotifyPrev(){
+  await spApi('POST', '/me/player/previous', {});
+  addMsg('chat','⏮ Vorheriges Lied.','jarvis');
+  setTimeout(spPollNow, 1500);
+}
+
+async function spotifyVolume(delta){
+  const state = await spApi('GET', '/me/player');
+  const cur = state?.device?.volume_percent ?? 50;
+  const nv = Math.max(0, Math.min(100, cur + delta));
+  await spApi('PUT', '/me/player/volume?volume_percent=' + nv, {});
+  addMsg('chat','🔊 Lautstärke: ' + nv + '%','jarvis');
+}
+
+async function spotifyNowPlaying(){
+  const s = await spApi('GET', '/me/player/currently-playing');
+  if(!s || !s.item){ addMsg('chat','🎵 Gerade läuft nichts auf Spotify.','jarvis'); return; }
+  addMsg('chat','🎵 **' + escHtml(s.item.name) + '** – ' + escHtml(s.item.artists.map(a=>a.name).join(', ')),'jarvis');
+}
+
+async function spPollNow(){
+  if(!spToken) return;
+  const s = await spApi('GET', '/me/player/currently-playing');
+  if(!s || !s.item){ el('spPlayer').style.display='none'; return; }
+  spPlaying = s.is_playing;
+  el('spPlayer').style.display = 'block';
+  el('spTrack').textContent  = s.item.name;
+  el('spArtist').textContent = s.item.artists.map(a=>a.name).join(', ');
+  el('spPlayBtn').textContent = s.is_playing ? '⏸' : '▶';
+  const img = s.item.album?.images?.[0]?.url;
+  if(img) el('spArt').src = img; else el('spArt').src = '';
+}
+
+function spUpdateStatus(msg){
+  const d = el('spStatus'); if(d) d.textContent = msg;
+}
+
+// Spotify-Sprachbefehle erkennen
+function matchSpotify(low, txt){
+  if(/spotify\s+pause|pause\s+spotify|stopp\s+musik|musik\s+pause/.test(low)) return {cmd:'pause'};
+  if(/spotify\s+weiter|weiter\s+spotify|weiter\s+musik|musik\s+weiter|spiel\s+weiter/.test(low)) return {cmd:'resume'};
+  if(/(nächste[sr]?\s+lied|nächste[sr]?\s+song|weiter\s+schalten|skip|überspringen)/.test(low)) return {cmd:'next'};
+  if(/(vorige[sr]?\s+lied|vorige[sr]?\s+song|zurück\s+lied|vorheriges)/.test(low)) return {cmd:'prev'};
+  if(/lauter/.test(low)) return {cmd:'vol', delta:15};
+  if(/leiser/.test(low)) return {cmd:'vol', delta:-15};
+  if(/was\s+(läuft|spielt|höre?\s+ich)\s+(gerade|jetzt)/.test(low)) return {cmd:'nowplaying'};
+  // "Spiele X auf Spotify" oder "Spotify: spiele X"
+  let m = txt.match(/(?:spiel(?:e)?\s+.+?\s+auf\s+spotify|spotify.{0,5}spiel(?:e)?\s+(.+))/i);
+  if(m) return {cmd:'play', q: (m[1]||(txt.match(/spiel(?:e)?\s+(.+?)\s+auf\s+spotify/i)||[])[1]||'').trim()};
+  // "Spiele [X] auf Spotify" exact form
+  m = txt.match(/spiel(?:e)?\s+(.+?)\s+auf\s+spotify/i);
+  if(m) return {cmd:'play', q: m[1].trim()};
+  return null;
+}
+
+// Spotify auf Seitenlade hin prüfen (OAuth-Callback + Token auffrischen)
+(async function spInit(){
+  spClientId = localStorage.getItem('sp_client_id') || '';
+  const urlCode = new URLSearchParams(location.search).get('code');
+  if(urlCode && spClientId) await spExchangeCode(urlCode);
+  if(spToken) spPollNow();
+  if(el('spRedirectUri')) el('spRedirectUri').textContent = location.origin + location.pathname;
+})();
+
 function saveSettings(){
   const newName = el('#nameInput').value.trim().toUpperCase();
   if(newName && newName!==jName){ jName=newName; localStorage.setItem('jarvis_name',jName); applyName(); }
@@ -2688,20 +2918,15 @@ async function agentMode(){
 
   addMsg('chat', '🤖 **Agent gestartet:** '+goal+'\n\n*Plane Aufgaben…*', 'jarvis');
 
-  async function callClaude(prompt, maxTokens=2000){
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6', max_tokens:maxTokens,
-        messages:[{role:'user',content:prompt}]})
-    });
-    const d = await r.json();
+  async function agentCallClaude(prompt, maxTokens=2000){
+    const d = await callClaude({model:'claude-sonnet-4-6', max_tokens:maxTokens,
+      messages:[{role:'user',content:prompt}]});
     return d.content?.[0]?.text || '';
   }
 
   try{
     // Schritt 1: Plan erstellen
-    const plan = await callClaude(
+    const plan = await agentCallClaude(
       `Du bist ein KI-Agent. Zerlege diese Aufgabe in genau 3-4 konkrete Schritte:\n"${goal}"\n\nAntworte NUR mit einer nummerierten Liste, ein Schritt pro Zeile, keine Erklärungen davor oder danach. Maximal 8 Wörter pro Schritt.`, 300
     );
     const steps = plan.split('\n').filter(l=>l.match(/^\d/)).map(l=>l.replace(/^\d+[\.\)]\s*/,'').trim()).filter(Boolean);
@@ -2710,7 +2935,7 @@ async function agentMode(){
     // Plan anzeigen
     const planText = steps.map((s,i)=>`${i+1}. ${s}`).join('\n');
     const agentMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
-    if(agentMsgs.length) agentMsgs[agentMsgs.length-1].querySelector('.bubble').innerHTML =
+    if(agentMsgs.length) agentMsgs[agentMsgs.length-1].lastElementChild.innerHTML =
       formatText('🤖 **Agent-Plan für:** '+goal+'\n\n'+planText+'\n\n*Starte Ausführung…*');
 
     // Schritt 2: Jeden Schritt ausführen
@@ -2718,11 +2943,11 @@ async function agentMode(){
     for(let i=0; i<steps.length; i++){
       const step = steps[i];
       addMsg('chat', `⚙️ **Schritt ${i+1}/${steps.length}:** ${step}`, 'jarvis');
-      const result = await callClaude(
+      const result = await agentCallClaude(
         `${context}Führe jetzt diesen Schritt aus: "${step}"\n\nGib ein konkretes, vollständiges Ergebnis. Sei präzise und praxisnah.`, 1500
       );
       const stepMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
-      if(stepMsgs.length) stepMsgs[stepMsgs.length-1].querySelector('.bubble').innerHTML =
+      if(stepMsgs.length) stepMsgs[stepMsgs.length-1].lastElementChild.innerHTML =
         formatText(`**Schritt ${i+1}/${steps.length}: ${step}**\n\n${result}`);
       context += `Schritt ${i+1} (${step}):\n${result}\n\n`;
     }
@@ -2746,16 +2971,11 @@ async function analyzeDoc(input){
     let content=e.target.result;
     if(content.length>30000) content=content.slice(0,30000)+'…[gekürzt]';
     try{
-      const r=await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,
-          messages:[{role:'user',content:`Datei: "${file.name}"\n\nInhalt:\n${content}\n\n---\n${question}`}]})
-      });
-      const d=await r.json();
+      const d=await callClaude({model:'claude-sonnet-4-6',max_tokens:1500,
+        messages:[{role:'user',content:`Datei: "${file.name}"\n\nInhalt:\n${content}\n\n---\n${question}`}]});
       const txt=d.content?.[0]?.text||'Keine Antwort.';
       const msgs=document.querySelectorAll('#chat-chat .msg.jarvis');
-      if(msgs.length) msgs[msgs.length-1].querySelector('.bubble').innerHTML=formatText(txt);
+      if(msgs.length) msgs[msgs.length-1].lastElementChild.innerHTML=formatText(txt);
       else addMsg('chat',txt,'jarvis');
       if(speakOn) speak(txt.slice(0,200));
     }catch(err){ addMsg('chat','❌ Fehler: '+err.message,'jarvis'); }
@@ -2778,22 +2998,17 @@ async function analyzeImage(input){
     const b64 = e.target.result.split(',')[1];
     const mime = file.type || 'image/jpeg';
     try{
-      const r = await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({
-          model:'claude-sonnet-4-6', max_tokens:1024,
-          messages:[{role:'user',content:[
-            {type:'image',source:{type:'base64',media_type:mime,data:b64}},
-            {type:'text',text:question}
-          ]}]
-        })
+      const d = await callClaude({
+        model:'claude-sonnet-4-6', max_tokens:1024,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+          {type:'text',text:question}
+        ]}]
       });
-      const d = await r.json();
       const txt = d.content?.[0]?.text || 'Keine Antwort erhalten.';
       // Letzte "analysiere…" Nachricht ersetzen
       const msgs = document.querySelectorAll('#chat-chat .msg.jarvis');
-      if(msgs.length) msgs[msgs.length-1].querySelector('.bubble').innerHTML = marked.parse ? marked.parse(txt) : txt;
+      if(msgs.length) msgs[msgs.length-1].lastElementChild.innerHTML = formatText(txt);
       else addMsg('chat', txt, 'jarvis');
       if(speakOn) speak(txt.slice(0,200));
     }catch(err){ addMsg('chat','❌ Fehler: '+err.message,'jarvis'); }
@@ -2830,16 +3045,10 @@ Der Shop soll enthalten:
 - Mobile-responsive (Flexbox/Grid)
 - Alles in EINER Datei (kein externes CSS/JS außer Google Fonts)`;
 
-  const key = localStorage.getItem('jarvis_key');
-  if(!key){ addMsg('shop','⚠️ Bitte zuerst deinen Claude API Key in den Einstellungen eingeben.','jarvis'); return; }
+  if(!apiKey){ addMsg('shop','⚠️ Bitte zuerst deinen Claude API Key in den Einstellungen eingeben.','jarvis'); return; }
 
   try{
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:prompt2}]})
-    });
-    const d = await r.json();
+    const d = await callClaude({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:prompt2}]});
     let html = d.content?.[0]?.text || '';
     // HTML-Block aus Markdown rausschneiden falls vorhanden
     const match = html.match(/```html\s*([\s\S]*?)```/i) || html.match(/```\s*([\s\S]*?)```/);
