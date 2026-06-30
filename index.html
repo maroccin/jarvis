@@ -44,6 +44,54 @@
     from { background-position: 0 0, 0 0; }
     to   { background-position: 46px 46px, 46px 46px; }
   }
+  /* ---- Hintergrund-Muster ---- */
+  /* Hexagon */
+  body.bg-hex::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 2 L54 17 L54 47 L28 62 L2 47 L2 17 Z' fill='none' stroke='rgba(53,200,255,0.18)' stroke-width='1'/%3E%3Cpath d='M28 52 L54 67 L54 97 L28 112 L2 97 L2 67 Z' fill='none' stroke='rgba(53,200,255,0.18)' stroke-width='1'/%3E%3C/svg%3E");
+    background-size: 56px 100px;
+    animation: gridpan 20s linear infinite;
+  }
+  /* Radar */
+  body.bg-radar::before {
+    background-image:
+      radial-gradient(circle, transparent 19%, rgba(53,200,255,0.12) 20%, transparent 21%),
+      radial-gradient(circle, transparent 39%, rgba(53,200,255,0.10) 40%, transparent 41%),
+      radial-gradient(circle, transparent 59%, rgba(53,200,255,0.08) 60%, transparent 61%),
+      radial-gradient(circle, transparent 79%, rgba(53,200,255,0.06) 80%, transparent 81%);
+    background-size: 100% 100%;
+    mask-image: none; -webkit-mask-image: none;
+    animation: none;
+  }
+  body.bg-radar::after {
+    background: conic-gradient(from 0deg, transparent 0 88%, rgba(53,200,255,0.9) 94%, transparent 100%);
+    opacity: 0.5;
+    animation: ringspin 4s linear infinite;
+  }
+  /* Sterne */
+  body.bg-stars::before {
+    background-image:
+      radial-gradient(1px 1px at 10% 15%, rgba(95,240,255,0.9) 0%, transparent 100%),
+      radial-gradient(1px 1px at 25% 60%, rgba(53,200,255,0.8) 0%, transparent 100%),
+      radial-gradient(2px 2px at 40% 25%, rgba(95,240,255,0.7) 0%, transparent 100%),
+      radial-gradient(1px 1px at 55% 75%, rgba(53,200,255,0.9) 0%, transparent 100%),
+      radial-gradient(2px 2px at 70% 10%, rgba(95,240,255,0.8) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 50%, rgba(53,200,255,0.7) 0%, transparent 100%),
+      radial-gradient(1px 1px at 90% 30%, rgba(95,240,255,0.9) 0%, transparent 100%),
+      radial-gradient(2px 2px at 15% 85%, rgba(53,200,255,0.6) 0%, transparent 100%),
+      radial-gradient(1px 1px at 35% 45%, rgba(95,240,255,0.8) 0%, transparent 100%),
+      radial-gradient(1px 1px at 60% 90%, rgba(53,200,255,0.7) 0%, transparent 100%),
+      radial-gradient(2px 2px at 75% 65%, rgba(95,240,255,0.9) 0%, transparent 100%),
+      radial-gradient(1px 1px at 5%  40%, rgba(53,200,255,0.8) 0%, transparent 100%),
+      radial-gradient(1px 1px at 48% 8%,  rgba(95,240,255,0.7) 0%, transparent 100%),
+      radial-gradient(2px 2px at 92% 80%, rgba(53,200,255,0.9) 0%, transparent 100%),
+      radial-gradient(1px 1px at 30% 95%, rgba(95,240,255,0.6) 0%, transparent 100%);
+    background-size: 100% 100%;
+    mask-image: none; -webkit-mask-image: none;
+    animation: startwinkle 6s ease-in-out infinite alternate;
+  }
+  @keyframes startwinkle { 0%{opacity:0.6} 50%{opacity:1} 100%{opacity:0.7} }
+  /* Kein Muster */
+  body.bg-none::before { display: none; }
   /* Schwebender, rotierender Energie-Ring im Hintergrund */
   body::after {
     content:""; position: fixed; width: 900px; height: 900px; left: 50%; top: 50%;
@@ -489,6 +537,7 @@
       <div class="viewhead"><h2>💬 Assistent</h2><p>Frag mich alles – Rezepte, Ideen, Alltag.</p></div>
       <div class="chat" id="chat-chat"></div>
       <div class="chips" id="chips-chat">
+        <div class="chip" onclick="agentMode()">🤖 Agent-Modus</div>
         <div class="chip" onclick="briefing()">🔔 Was steht an?</div>
         <div class="chip" onclick="openPlaces('Tankstelle')">⛽ Tankstelle</div>
         <div class="chip" onclick="openPlaces('Restaurant')">🍽️ Restaurant</div>
@@ -498,6 +547,10 @@
       </div>
       <div class="bar">
         <button class="btn mic" data-mic onclick="toggleMic('chat')">🎤</button>
+        <button class="btn" onclick="openImagePicker()" title="Bild hochladen & analysieren">🖼️</button>
+        <button class="btn" onclick="openDocPicker()" title="Dokument/Text hochladen & lesen">📄</button>
+        <input id="imgFileInput" type="file" accept="image/*" style="display:none" onchange="analyzeImage(this)">
+        <input id="docFileInput" type="file" accept=".txt,.md,.csv,.json,.html,.js,.py,.pdf" style="display:none" onchange="analyzeDoc(this)">
         <input data-input placeholder="Frag Jarvis etwas…" onkeydown="if(event.key==='Enter')send('chat')">
         <button class="btn sendb" onclick="send('chat')">➤</button>
       </div>
@@ -656,8 +709,10 @@
   <!-- Einstellungen -->
   <div id="overlay">
     <div id="settings">
-      <h2>⚙️ Jarvis einrichten</h2>
-      <p>Dein Claude API Key wird <b>nur lokal in deinem Browser</b> gespeichert – nie in der Datei, nie online.</p>
+      <h2>⚙️ Einrichten</h2>
+      <p>Alles wird <b>nur lokal in deinem Browser</b> gespeichert – nie online.</p>
+      <label>Assistent-Name (z.B. Charlie, Jarvis, Max…)</label>
+      <input id="nameInput" type="text" placeholder="JARVIS" maxlength="20">
       <label>Claude API Key</label>
       <input id="keyInput" type="password" placeholder="sk-ant-api03-…">
       <label>Modell</label>
@@ -683,6 +738,14 @@
       <select id="voiceModeInput">
         <option value="send">Direkt – sofort ausführen / absenden</option>
         <option value="dictate">Diktat – nur ins Feld schreiben, du sendest selbst</option>
+      </select>
+      <label>🎨 Hintergrund-Muster</label>
+      <select id="bgPatternInput">
+        <option value="grid">⊞ Gitter (Standard)</option>
+        <option value="hex">⬡ Hexagon</option>
+        <option value="radar">◎ Radar</option>
+        <option value="stars">✦ Sterne</option>
+        <option value="none">✕ Keins</option>
       </select>
       <label>🎬 YouTube API-Key <span style="color:var(--muted);">– optional; damit „Spiele …" sofort das genau richtige Video startet (gratis bei console.cloud.google.com → YouTube Data API)</span></label>
       <div style="display:flex;gap:8px;">
@@ -729,6 +792,10 @@
         <button class="save" onclick="saveSettings()">Speichern</button>
         <button class="close" onclick="closeSettings()">Schliessen</button>
       </div>
+      <div class="row" style="margin-top:8px;gap:8px;">
+        <button class="close" style="flex:1" onclick="exportSettings()">📤 Einstellungen exportieren</button>
+        <label class="close" style="flex:1;text-align:center;cursor:pointer;">📥 Importieren<input type="file" accept=".json" style="display:none" onchange="importSettings(this)"></label>
+      </div>
     </div>
   </div>
 
@@ -737,6 +804,18 @@ const orb = document.getElementById('orb');
 let speakOn = true;
 let apiKey = localStorage.getItem('jarvis_key') || '';
 let model = localStorage.getItem('jarvis_model') || 'claude-sonnet-4-6';
+let jName = localStorage.getItem('jarvis_name') || 'JARVIS';
+function applyBgPattern(p){
+  document.body.classList.remove('bg-grid','bg-hex','bg-radar','bg-stars','bg-none');
+  document.body.classList.add('bg-'+(p||'grid'));
+}
+function applyName(){
+  document.title = jName;
+  const h = el('.brand h1'); if(h) h.textContent = jName;
+  const bt = document.querySelector('.bootTitle'); if(bt) bt.textContent = jName.split('').join(' ');
+  // Label in Nachrichten
+  document.querySelectorAll('.lbl').forEach(l=>{ if(l.textContent!=='DU') l.textContent=jName; });
+}
 let webOn = localStorage.getItem('jarvis_web') !== 'false';
 let sfxOn = localStorage.getItem('jarvis_sfx') !== 'false';
 let currentView = 'chat';
@@ -767,12 +846,12 @@ const sfxWake    = ()=>{ beep(660,1320,0.12,'sine',0.07); setTimeout(()=>beep(88
 // Eigener Gesprächsverlauf pro Bereich → bleibt aufgeräumt
 const histories = { chat: [], trading: [], money: [], shop: [] };
 
-const BASE = `Du bist JARVIS, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis.`;
+const BASE = ()=>`Du bist ${jName}, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis.`;
 const PROMPTS = {
-  chat: BASE + ` Du hilfst bei allem im Alltag: Rezepte, Planung, Fragen, Ideen. Wenn Kamil Musik/Videos hören oder eine Webseite öffnen will, gib ihm einen anklickbaren Markdown-Link zum Starten, z.B. [▶️ Auf YouTube abspielen](https://www.youtube.com/results?search_query=SUCHE) oder [🎵 Auf Spotify](https://open.spotify.com/search/SUCHE) – ersetze SUCHE durch den Wunsch (Leerzeichen mit + bzw. %20). Bei „öffne X" gib den passenden Link der Seite.`,
-  trading: BASE + ` Fokus: Börse & Trading. Nenne konkrete Aktien/Coins mit aktuellen Kursen (nutze die Web-Suche für Live-Daten!) und eine klare Einschätzung. Gib Einstiegs- und Stop-Loss-Ideen. Risiko nur in EINEM kurzen Satz am Ende. Keine ausweichende "frag-einen-Berater"-Predigt.`,
-  money: BASE + ` Fokus: Geld verdienen. Sei direkt, versiert und konkret. Liefere fertige PLÄNE und Schritt-für-Schritt-Anleitungen mit echten Zahlen: Aufwand, möglicher Verdienst (pro Tag/Woche) und der allererste Schritt, den Kamil HEUTE machen kann. Nutze die Web-Suche für aktuelle Möglichkeiten. KEINE entmutigenden Floskeln wie "online kann man nicht einfach Geld verdienen" – zeig stattdessen genau WIE es geht. Denke breit: Skills/Dienstleistungen verkaufen, Flipping, Online-Gigs, lokale Jobs, kleine Geschäftsideen.`,
-  shop: BASE + ` Du bist Kamils persönlicher Dropshipping-Experte. Dein Ziel: ihm helfen, schnell einen profitablen Online-Shop aufzubauen. Regeln: 1) Immer konkret – echte Produktnamen, echte Preise, echte Margen. 2) Formatiere Produkte als Tabelle oder klare Liste. 3) Nutze Web-Suche für aktuelle Trends, AliExpress-Preise und Wettbewerb. 4) Schlage immer nächste Schritte vor. 5) Wenn Kamil eine Nische nennt: erstelle sofort einen kompletten Shop-Plan mit 5-8 Produkten, Einkaufspreis, Verkaufspreis, Marge in % und Lieferant (AliExpress/CJ/Spocket). 6) Schreibe Produkttexte verkaufsstark und auf Deutsch. 7) Kenne die Shopify-Plattform gut – gib konkrete Setup-Tipps.`
+  chat: ()=>BASE() + ` Du hilfst bei allem im Alltag: Rezepte, Planung, Fragen, Ideen. Wenn Kamil Musik/Videos hören oder eine Webseite öffnen will, gib ihm einen anklickbaren Markdown-Link zum Starten, z.B. [▶️ Auf YouTube abspielen](https://www.youtube.com/results?search_query=SUCHE) oder [🎵 Auf Spotify](https://open.spotify.com/search/SUCHE) – ersetze SUCHE durch den Wunsch (Leerzeichen mit + bzw. %20). Bei „öffne X" gib den passenden Link der Seite.`,
+  trading: ()=>BASE() + ` Fokus: Börse & Trading. Nenne konkrete Aktien/Coins mit aktuellen Kursen (nutze die Web-Suche für Live-Daten!) und eine klare Einschätzung. Gib Einstiegs- und Stop-Loss-Ideen. Risiko nur in EINEM kurzen Satz am Ende. Keine ausweichende "frag-einen-Berater"-Predigt.`,
+  money: ()=>BASE() + ` Fokus: Geld verdienen. Sei direkt, versiert und konkret. Liefere fertige PLÄNE und Schritt-für-Schritt-Anleitungen mit echten Zahlen: Aufwand, möglicher Verdienst (pro Tag/Woche) und der allererste Schritt, den Kamil HEUTE machen kann. Nutze die Web-Suche für aktuelle Möglichkeiten. KEINE entmutigenden Floskeln wie "online kann man nicht einfach Geld verdienen" – zeig stattdessen genau WIE es geht. Denke breit: Skills/Dienstleistungen verkaufen, Flipping, Online-Gigs, lokale Jobs, kleine Geschäftsideen.`,
+  shop: ()=>BASE() + ` Du bist Kamils persönlicher Dropshipping-Experte. Dein Ziel: ihm helfen, schnell einen profitablen Online-Shop aufzubauen. Regeln: 1) Immer konkret – echte Produktnamen, echte Preise, echte Margen. 2) Formatiere Produkte als Tabelle oder klare Liste. 3) Nutze Web-Suche für aktuelle Trends, AliExpress-Preise und Wettbewerb. 4) Schlage immer nächste Schritte vor. 5) Wenn Kamil eine Nische nennt: erstelle sofort einen kompletten Shop-Plan mit 5-8 Produkten, Einkaufspreis, Verkaufspreis, Marge in % und Lieferant (AliExpress/CJ/Spocket). 6) Schreibe Produkttexte verkaufsstark und auf Deutsch. 7) Kenne die Shopify-Plattform gut – gib konkrete Setup-Tipps.`
 };
 // Erklär-Stile pro Bereich
 const levels = { trading:'normal', money:'normal' };
@@ -866,7 +945,7 @@ function formatText(t){
 function addMsg(view, text, who){
   const box = chatBox(view);
   const wrap = document.createElement('div'); wrap.className = 'msg '+who;
-  const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent = who==='user'?'DU':'JARVIS';
+  const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent = who==='user'?'DU':jName;
   const body = document.createElement('div'); body.innerHTML = formatText(text);
   wrap.appendChild(lbl); wrap.appendChild(body); box.appendChild(wrap); box.scrollTop = box.scrollHeight;
   if(who==='jarvis'){ wrap.style.cursor='pointer'; wrap.title='Tippen zum Vorlesen';
@@ -894,7 +973,7 @@ async function callClaude(body){
 async function askClaude(view, userText){
   const hist = histories[view];
   hist.push({ role:'user', content:userText });
-  let sys = PROMPTS[view];
+  let sys = (typeof PROMPTS[view]==='function') ? PROMPTS[view]() : PROMPTS[view];
   if(levels[view]) sys += STYLE[levels[view]] || '';
   // Langzeitgedächtnis: was Jarvis dauerhaft über Kamil weiß
   if(jarvisMem.length){
@@ -2338,6 +2417,8 @@ function openSettings(){
   if(haToken) haStatus('✅ Verbunden – '+Object.keys(haEntities).length+' Geräte.');
   if(lgConnected) lgStatus('✅ TV verbunden.');
   if(hueUser) hueStatus('✅ Bereits verbunden – '+Object.keys(hueLights).length+' Lampe(n).');
+  el('#nameInput').value=jName;
+  el('#bgPatternInput').value=localStorage.getItem('jarvis_bg')||'grid';
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
   el('#voiceModeInput').value=voiceMode;
   el('#ytKeyInput').value=ytKey;
@@ -2346,7 +2427,35 @@ function openSettings(){
   el('#overlay').classList.add('show');
 }
 function closeSettings(){ el('#overlay').classList.remove('show'); }
+function exportSettings(){
+  const data={};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(k.startsWith('jarvis')||k.startsWith('hue')||k.startsWith('ha_')||k.startsWith('lg_'))
+      data[k]=localStorage.getItem(k);
+  }
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='jarvis-einstellungen.json'; a.click();
+}
+function importSettings(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=(e)=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      Object.entries(data).forEach(([k,v])=>localStorage.setItem(k,v));
+      alert('✅ Einstellungen importiert! Seite wird neu geladen.');
+      location.reload();
+    }catch(_){ alert('❌ Datei ungültig.'); }
+  };
+  reader.readAsText(file);
+}
 function saveSettings(){
+  const newName = el('#nameInput').value.trim().toUpperCase();
+  if(newName && newName!==jName){ jName=newName; localStorage.setItem('jarvis_name',jName); applyName(); }
+  const bgP = el('#bgPatternInput').value;
+  localStorage.setItem('jarvis_bg', bgP); applyBgPattern(bgP);
   apiKey = el('#keyInput').value.trim(); model = el('#modelInput').value; webOn = el('#webInput').checked; sfxOn = el('#sfxInput').checked;
   localStorage.setItem('jarvis_key',apiKey); localStorage.setItem('jarvis_model',model);
   localStorage.setItem('jarvis_web', webOn?'true':'false');
@@ -2569,6 +2678,129 @@ let shopifyKey = localStorage.getItem('jarvis_shopify_key')||'';
 let shopifyStore = localStorage.getItem('jarvis_shopify_store')||''; // z.B. mein-shop.myshopify.com
 let shopPlan = null; // aktueller generierter Shop-Plan (für Shopify-Push)
 
+// ---- Bild analysieren (Claude Vision) ----
+// ---- Agent-Modus: mehrstufige Aufgaben selbstständig abarbeiten ----
+async function agentMode(){
+  if(!apiKey){ addMsg('chat','⚠️ Claude API Key in Einstellungen eingeben.','jarvis'); return; }
+  switchView('chat');
+  const goal = prompt('Was soll ich selbstständig erledigen?\n\nBeispiele:\n• Bau mir einen Motorrad-Shop\n• Erstelle einen kompletten Businessplan für Dropshipping\n• Recherchiere 5 Winning-Produkte und schreib die Texte');
+  if(!goal) return;
+
+  addMsg('chat', '🤖 **Agent gestartet:** '+goal+'\n\n*Plane Aufgaben…*', 'jarvis');
+
+  async function callClaude(prompt, maxTokens=2000){
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6', max_tokens:maxTokens,
+        messages:[{role:'user',content:prompt}]})
+    });
+    const d = await r.json();
+    return d.content?.[0]?.text || '';
+  }
+
+  try{
+    // Schritt 1: Plan erstellen
+    const plan = await callClaude(
+      `Du bist ein KI-Agent. Zerlege diese Aufgabe in genau 3-4 konkrete Schritte:\n"${goal}"\n\nAntworte NUR mit einer nummerierten Liste, ein Schritt pro Zeile, keine Erklärungen davor oder danach. Maximal 8 Wörter pro Schritt.`, 300
+    );
+    const steps = plan.split('\n').filter(l=>l.match(/^\d/)).map(l=>l.replace(/^\d+[\.\)]\s*/,'').trim()).filter(Boolean);
+    if(!steps.length){ addMsg('chat','❌ Konnte keinen Plan erstellen.','jarvis'); return; }
+
+    // Plan anzeigen
+    const planText = steps.map((s,i)=>`${i+1}. ${s}`).join('\n');
+    const agentMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
+    if(agentMsgs.length) agentMsgs[agentMsgs.length-1].querySelector('.bubble').innerHTML =
+      formatText('🤖 **Agent-Plan für:** '+goal+'\n\n'+planText+'\n\n*Starte Ausführung…*');
+
+    // Schritt 2: Jeden Schritt ausführen
+    let context = `Übergeordnetes Ziel: "${goal}"\n\n`;
+    for(let i=0; i<steps.length; i++){
+      const step = steps[i];
+      addMsg('chat', `⚙️ **Schritt ${i+1}/${steps.length}:** ${step}`, 'jarvis');
+      const result = await callClaude(
+        `${context}Führe jetzt diesen Schritt aus: "${step}"\n\nGib ein konkretes, vollständiges Ergebnis. Sei präzise und praxisnah.`, 1500
+      );
+      const stepMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
+      if(stepMsgs.length) stepMsgs[stepMsgs.length-1].querySelector('.bubble').innerHTML =
+        formatText(`**Schritt ${i+1}/${steps.length}: ${step}**\n\n${result}`);
+      context += `Schritt ${i+1} (${step}):\n${result}\n\n`;
+    }
+
+    // Abschluss
+    addMsg('chat', '✅ **Agent fertig!** Alle '+steps.length+' Schritte abgeschlossen.\n\nSoll ich einen Schritt vertiefen oder etwas anpassen?', 'jarvis');
+    sfxReceive();
+  }catch(err){ addMsg('chat','❌ Agent-Fehler: '+err.message,'jarvis'); }
+}
+
+// ---- Dokument lesen ----
+function openDocPicker(){ const q=el('#docFileInput'); if(q){q.value='';q.click();} }
+async function analyzeDoc(input){
+  const file=input.files[0]; if(!file) return;
+  if(!apiKey){ addMsg('chat','⚠️ Claude API Key in Einstellungen eingeben.','jarvis'); return; }
+  switchView('chat');
+  const question = prompt('Was soll ich mit diesem Dokument machen?\n(z.B. zusammenfassen, übersetzen, analysieren…)') || 'Fasse dieses Dokument kurz und klar zusammen. Was sind die wichtigsten Punkte?';
+  addMsg('chat','📄 *Lese Dokument…*','jarvis');
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    let content=e.target.result;
+    if(content.length>30000) content=content.slice(0,30000)+'…[gekürzt]';
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,
+          messages:[{role:'user',content:`Datei: "${file.name}"\n\nInhalt:\n${content}\n\n---\n${question}`}]})
+      });
+      const d=await r.json();
+      const txt=d.content?.[0]?.text||'Keine Antwort.';
+      const msgs=document.querySelectorAll('#chat-chat .msg.jarvis');
+      if(msgs.length) msgs[msgs.length-1].querySelector('.bubble').innerHTML=formatText(txt);
+      else addMsg('chat',txt,'jarvis');
+      if(speakOn) speak(txt.slice(0,200));
+    }catch(err){ addMsg('chat','❌ Fehler: '+err.message,'jarvis'); }
+  };
+  reader.readAsText(file);
+}
+
+function openImagePicker(){
+  const q = el('#imgFileInput');
+  if(q){ q.value=''; q.click(); }
+}
+async function analyzeImage(input){
+  const file = input.files[0]; if(!file) return;
+  if(!apiKey){ addMsg('chat','⚠️ Bitte zuerst Claude API Key in Einstellungen eingeben.','jarvis'); return; }
+  switchView('chat');
+  const question = prompt('Was soll ich zu diesem Bild analysieren?\n(leer lassen = allgemeine Beschreibung)') || 'Beschreibe dieses Bild detailliert. Was siehst du? Was fällt dir auf?';
+  addMsg('chat','🖼️ *Bild wird analysiert…*','jarvis');
+  const reader = new FileReader();
+  reader.onload = async (e)=>{
+    const b64 = e.target.result.split(',')[1];
+    const mime = file.type || 'image/jpeg';
+    try{
+      const r = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({
+          model:'claude-sonnet-4-6', max_tokens:1024,
+          messages:[{role:'user',content:[
+            {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+            {type:'text',text:question}
+          ]}]
+        })
+      });
+      const d = await r.json();
+      const txt = d.content?.[0]?.text || 'Keine Antwort erhalten.';
+      // Letzte "analysiere…" Nachricht ersetzen
+      const msgs = document.querySelectorAll('#chat-chat .msg.jarvis');
+      if(msgs.length) msgs[msgs.length-1].querySelector('.bubble').innerHTML = marked.parse ? marked.parse(txt) : txt;
+      else addMsg('chat', txt, 'jarvis');
+      if(speakOn) speak(txt.slice(0,200));
+    }catch(err){ addMsg('chat','❌ Fehler: '+err.message,'jarvis'); }
+  };
+  reader.readAsDataURL(file);
+}
+
 function shopNischeFinds(){
   switchView('shop');
   ask('shop','Zeig mir 6 profitable Dropshipping-Nischen für 2026 – jede mit: Nischen-Name, Warum jetzt gut, Zielgruppe, Beispielprodukt, Einkaufspreis ca., Verkaufspreis ca., Marge in %. Formatiere es als übersichtliche Liste. Frag mich danach, welche mir gefällt, damit wir den kompletten Shop-Plan erstellen.');
@@ -2749,7 +2981,7 @@ setInterval(renderAlerts, 60*1000);     // Meldungen aktuell halten (Timer/Lampe
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
 if(haToken) haLoad();          // Home-Assistant-Geräte laden
-updateWakeBtn(); updateShopifyBar();
+updateWakeBtn(); updateShopifyBar(); applyName(); applyBgPattern(localStorage.getItem('jarvis_bg')||'grid');
 if(wakeMode && SR && !IS_IOS){ liveMode=true; speakOn=true; updateLiveBtn(); setTimeout(startRecog,1500); }
 setInterval(refreshCams, 4000);   // Kamera-Live-Bilder aktualisieren
 const _h = new Date().getHours();
