@@ -1901,9 +1901,7 @@ function matchPlayMusic(low, txt){
 function playMusic(song){
   const q = song.q || 'lofi hip hop radio beats to relax';
   openVideo(q, song.q ? null : 'Entspannungs-Musik');
-  const enc = encodeURIComponent(q);
-  const sp = 'https://open.spotify.com/search/'+enc;
-  addMsg('chat','🎵 Spiele **'+escHtml(song.q||'Musik zum Entspannen')+'** direkt hier.\n_(Lieber Spotify? [Hier öffnen]('+sp+'))_','jarvis');
+  addMsg('chat','🎵 Spiele **'+escHtml(song.q||'Musik zum Entspannen')+'** direkt in Jarvis.','jarvis');
   speak('Ich spiele '+(song.q||'Musik')+'.');
 }
 
@@ -1976,7 +1974,7 @@ async function openVideo(query, titleOverride){
   const btn='font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:.5px;border:1px solid var(--border);background:rgba(20,40,66,.8);color:#d8f3ff;padding:9px 16px;border-radius:22px;cursor:pointer;font-size:13px;white-space:nowrap;';
   ov.innerHTML =
     '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;">'+
-      '<span style="font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:1px;color:#eafcff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 0 14px rgba(53,200,255,.4);">🎬 '+escHtml(titleOverride||query)+'</span>'+
+      '<span class="voTitle" style="font-family:Orbitron,sans-serif;font-weight:700;letter-spacing:1px;color:#eafcff;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 0 14px rgba(53,200,255,.4);">🎬 '+escHtml(titleOverride||query)+'</span>'+
       '<button style="'+btn+'" onclick="window.open(\'https://www.youtube.com/results?search_query='+q+'\',\'_blank\')">↗ YouTube</button>'+
       '<button style="'+btn+'background:linear-gradient(135deg,#5ff0ff,#35c8ff);color:#04161f;border-color:var(--cyan);" onclick="closeVideo()">✕ Schliessen</button>'+
     '</div>'+
@@ -2635,12 +2633,23 @@ function carClockTick(){
 }
 
 async function carUpdateSpotify(){
-  if(!spToken) return;
+  const t=el('#carSpTrack'), a=el('#carSpArtist'), btn=el('#carSpBtn');
+  // Prüfe ob YouTube-Player in Jarvis läuft
+  const ytFrame = document.getElementById('ytFrame');
+  if(ytFrame){
+    const title = document.getElementById('videoOverlay')?.querySelector('.voTitle')?.textContent;
+    if(t) t.textContent = title || '▶ Läuft in Jarvis';
+    if(a) a.textContent = 'YouTube';
+    if(btn){ btn.textContent='⏸'; btn.onclick=()=>{ closeVideo(); if(btn) btn.textContent='▶'; }; }
+    return;
+  }
+  // Sonst Spotify-Status
+  if(!spToken){ if(t) t.textContent='Kein Titel'; if(a) a.textContent='–'; return; }
   const s = await spApi('GET','/me/player/currently-playing');
-  if(!s||!s.item) return;
-  const t=el('#carSpTrack'), a=el('#carSpArtist'), img=el('#carSpArt'), btn=el('#carSpBtn');
+  if(!s||!s.item){ if(t) t.textContent='Kein Titel'; return; }
   if(t) t.textContent = s.item.name;
   if(a) a.textContent = s.item.artists.map(x=>x.name).join(', ');
+  const img=el('#carSpArt');
   if(img && s.item.album?.images?.[0]) img.src = s.item.album.images[0].url;
   if(btn) btn.textContent = s.is_playing ? '⏸' : '▶';
   spPlaying = s.is_playing;
@@ -2916,21 +2925,14 @@ async function spApi(method, path, body){
 }
 
 async function spotifyPlay(query){
-  if(!spToken){ addMsg('chat','⚠️ Spotify nicht verbunden. Bitte in Einstellungen verbinden.','jarvis'); return; }
+  // Musik immer direkt in Jarvis via YouTube abspielen
   if(query){
-    const res = await spApi('GET', '/search?q=' + encodeURIComponent(query) + '&type=track&limit=1');
-    const track = res?.tracks?.items?.[0];
-    if(track){
-      await spApi('PUT', '/me/player/play', { uris: [track.uri] });
-      addMsg('chat','🎵 Spiele **' + escHtml(track.name) + '** von **' + escHtml(track.artists[0].name) + '**','jarvis');
-      speak('Spiele ' + track.name);
-      setTimeout(spPollNow, 1500);
-      return;
-    }
+    playMusic({q: query});
+  } else {
+    // Kein Suchwort → Spotify resume falls verbunden, sonst Lofi
+    if(spToken){ await spApi('PUT', '/me/player/play', {}); addMsg('chat','▶️ Wiedergabe fortgesetzt.','jarvis'); setTimeout(spPollNow,1500); }
+    else playMusic({q: null});
   }
-  await spApi('PUT', '/me/player/play', {});
-  addMsg('chat','▶️ Wiedergabe fortgesetzt.','jarvis');
-  setTimeout(spPollNow, 1500);
 }
 
 async function spotifyPause(){
