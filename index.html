@@ -2868,8 +2868,11 @@ function navOverview(){
 function navDemo(){
   if(navDemoTimer){ navDemoStop(); return; }
   if(!navRouteCoords.length){ el('#navInfo').textContent='Erst ein Ziel eingeben, dann Demo starten.'; return; }
-  navActive = true; navFollow = true;
+  navActive = true; navFollow = true; navPrevPos = null;
   const btn = el('#navDemoBtn'); if(btn){ btn.textContent='⏹️'; btn.title='Demo stoppen'; }
+  // Sofort in 3D-Schräglage gehen, am Startpunkt
+  navUserPos = navRouteCoords[0]; navSetUserMarker();
+  if(navMap) navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, pitch:60, duration:800});
   let i = 0;
   navDemoTimer = setInterval(()=>{
     if(i >= navRouteCoords.length){ navDemoStop(); return; }
@@ -2877,7 +2880,7 @@ function navDemo(){
     navSetUserMarker();
     navGuidanceTick();
     i += 2;   // alle 2 Punkte = etwas schneller
-  }, 350);
+  }, 500);
 }
 function navDemoStop(){
   if(navDemoTimer){ clearInterval(navDemoTimer); navDemoTimer=null; }
@@ -3870,7 +3873,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.0 · 3D-Fahransicht';
+const JARVIS_VERSION = 'v3.1 · 3D sofort geneigt';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
