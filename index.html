@@ -520,6 +520,7 @@
       <div class="navbtn" data-view="trading" onclick="switchView('trading')"><span class="ic">📈</span> Trading</div>
       <div class="navbtn" data-view="money" onclick="switchView('money')"><span class="ic">💰</span> Geld verdienen</div>
       <div class="navbtn" data-view="shop" onclick="switchView('shop')"><span class="ic">🛒</span> Dropshipping</div>
+      <div class="navbtn" onclick="carModeEnter()"><span class="ic">🚗</span> Auto-Modus</div>
     </div>
 
     <div class="sidefoot">
@@ -533,6 +534,54 @@
   <!-- Gesichtserkennung: verstecktes Video -->
   <video id="faceVideo" autoplay muted playsinline style="display:none;position:fixed;bottom:80px;right:16px;width:120px;height:90px;border-radius:10px;border:1px solid var(--border);z-index:800;object-fit:cover;opacity:0.7;"></video>
   <canvas id="faceCanvas" style="display:none;"></canvas>
+
+  <!-- Car-Modus Overlay -->
+  <div id="carOverlay" style="display:none;position:fixed;inset:0;z-index:8000;background:#0a0a0f;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 16px 30px;">
+
+    <!-- Kopfzeile: Uhr + Wetter -->
+    <div style="display:flex;justify-content:space-between;align-items:center;width:100%;max-width:500px;">
+      <div style="text-align:left;">
+        <div id="carClock" style="font-size:42px;font-weight:700;color:#fff;line-height:1;"></div>
+        <div id="carDate" style="font-size:14px;color:#888;margin-top:2px;"></div>
+      </div>
+      <div id="carWeather" style="text-align:right;font-size:18px;color:#ccc;"></div>
+    </div>
+
+    <!-- Spotify-Player -->
+    <div id="carSpotify" style="width:100%;max-width:500px;background:#111;border-radius:18px;padding:16px 20px;">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <img id="carSpArt" src="" style="width:56px;height:56px;border-radius:10px;background:#222;object-fit:cover;">
+        <div style="flex:1;overflow:hidden;">
+          <div id="carSpTrack" style="font-size:16px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Kein Titel</div>
+          <div id="carSpArtist" style="font-size:13px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">–</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;gap:24px;margin-top:14px;">
+        <button onclick="spotifyPrev();carUpdateSpotify()" style="background:none;border:none;color:#fff;font-size:32px;cursor:pointer;padding:8px;">⏮</button>
+        <button id="carSpBtn" onclick="spotifyToggle();setTimeout(carUpdateSpotify,1000)" style="background:#1db954;border:none;color:#000;font-size:24px;border-radius:50%;width:60px;height:60px;cursor:pointer;font-weight:700;">▶</button>
+        <button onclick="spotifyNext();carUpdateSpotify()" style="background:none;border:none;color:#fff;font-size:32px;cursor:pointer;padding:8px;">⏭</button>
+      </div>
+    </div>
+
+    <!-- Navigation Schnellziele -->
+    <div style="width:100%;max-width:500px;">
+      <div style="font-size:12px;color:#555;margin-bottom:8px;text-align:center;letter-spacing:1px;">NAVIGATION</div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+        <button onclick="carNav('home')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">🏠 Nachhause</button>
+        <button onclick="carNav('work')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">💼 Arbeit</button>
+        <button onclick="carNavCustom()" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">🔍 Ziel</button>
+      </div>
+    </div>
+
+    <!-- Grosser Mikro-Button -->
+    <button onclick="carVoice()" style="width:90px;height:90px;border-radius:50%;border:3px solid #1db954;background:#111;color:#1db954;font-size:36px;cursor:pointer;box-shadow:0 0 30px rgba(29,185,84,0.3);">🎙️</button>
+
+    <!-- Antwort-Zeile -->
+    <div id="carMsg" style="font-size:15px;color:#aaa;text-align:center;min-height:24px;max-width:500px;width:100%;"></div>
+
+    <!-- Beenden -->
+    <button onclick="carModeExit()" style="padding:10px 30px;border-radius:10px;border:1px solid #333;background:none;color:#555;font-size:14px;cursor:pointer;">✕ Auto-Modus beenden</button>
+  </div>
 
   <!-- Sperr-Overlay -->
   <div id="faceLockOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
@@ -1460,6 +1509,8 @@ function handleVoice(txt){
   // Video zeigen ("Zeig mir ein Video über/von …")
   const vm = txt.match(/(?:zeig(?:e)?\s+mir\s+|spiel(?:e)?\s+|starte\s+)(?:ein\s+)?video\s+(?:über|ueber|von|mit|zu)\s+(.+)/i);
   if(vm && vm[1]){ openVideo(vm[1].trim()); addMsg('chat','🎬 Video: **'+escHtml(vm[1].trim())+'**','jarvis'); busy=false; return; }
+  // Auto-Modus
+  if(matchCarMode(low)){ carModeEnter(); say('Auto-Modus aktiviert. Gute Fahrt, Kamil!'); busy=false; return; }
   // Spotify steuern
   const spCmd = matchSpotify(low, txt);
   if(spCmd){
@@ -1990,6 +2041,11 @@ function renderChips(){
   box.innerHTML = chips.map(c=>'<div class="chip" onclick="'+c[1].replace(/"/g,'&quot;')+'">'+c[0]+'</div>').join('');
 }
 // Schlafmodus: Lampen aus + ruhige Bestätigung
+// Sprachbefehl Auto-Modus
+function matchCarMode(low){
+  return /(auto.?modus|fahrmodus|car.?mode|ich fahre|ich bin im auto|driving mode)/.test(low);
+}
+
 function sleepMode(){
   switchView('chat'); sfxReceive();
   try{ huePreset({on:false}); }catch(e){}
@@ -2549,6 +2605,83 @@ function importSettings(input){
   };
   reader.readAsText(file);
 }
+// ---- Car-Modus ----
+let carWakeLock = null;
+let carClockTimer = null;
+
+async function carModeEnter(){
+  el('#carOverlay').style.display = 'flex';
+  // Bildschirm anlassen
+  try{ if('wakeLock' in navigator) carWakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+  carClockTick();
+  carClockTimer = setInterval(carClockTick, 1000);
+  carUpdateSpotify();
+  setInterval(carUpdateSpotify, 10000);
+  // Wetter
+  if(myLoc) carSetWeather();
+}
+
+function carModeExit(){
+  el('#carOverlay').style.display = 'none';
+  if(carWakeLock){ carWakeLock.release(); carWakeLock=null; }
+  if(carClockTimer){ clearInterval(carClockTimer); carClockTimer=null; }
+}
+
+function carClockTick(){
+  const now = new Date();
+  const c = el('#carClock'); const d = el('#carDate');
+  if(c) c.textContent = now.toLocaleTimeString('de-CH',{hour:'2-digit',minute:'2-digit'});
+  if(d) d.textContent = now.toLocaleDateString('de-CH',{weekday:'long',day:'numeric',month:'long'});
+}
+
+async function carUpdateSpotify(){
+  if(!spToken) return;
+  const s = await spApi('GET','/me/player/currently-playing');
+  if(!s||!s.item) return;
+  const t=el('#carSpTrack'), a=el('#carSpArtist'), img=el('#carSpArt'), btn=el('#carSpBtn');
+  if(t) t.textContent = s.item.name;
+  if(a) a.textContent = s.item.artists.map(x=>x.name).join(', ');
+  if(img && s.item.album?.images?.[0]) img.src = s.item.album.images[0].url;
+  if(btn) btn.textContent = s.is_playing ? '⏸' : '▶';
+  spPlaying = s.is_playing;
+}
+
+function carSetWeather(){
+  // Wetter-Kurzinfo aus gecachtem Zustand
+  const box = el('#carWeather');
+  if(!box) return;
+  const wxDesc = el('#wxDesc');
+  const wxTemp = el('#wxTemp');
+  if(wxDesc && wxTemp) box.textContent = (wxTemp.textContent||'') + '  ' + (wxDesc.textContent||'');
+}
+
+function carNav(dest){
+  const saved = localStorage.getItem('car_'+dest);
+  let url;
+  if(saved) url = 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(saved);
+  else {
+    const addr = prompt(dest==='home'?'Heimadresse eingeben:':'Arbeitsadresse eingeben:');
+    if(!addr) return;
+    localStorage.setItem('car_'+dest, addr);
+    url = 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(addr);
+  }
+  window.open(url,'_blank');
+}
+
+function carNavCustom(){
+  const dest = prompt('Wohin?');
+  if(!dest) return;
+  window.open('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest),'_blank');
+}
+
+function carVoice(){
+  el('#carMsg').textContent = '🎙️ Höre zu…';
+  toggleMic('chat');
+}
+
+// Sprachbefehl "Auto-Modus / Fahrmodus"
+// (wird in handleVoice eingebunden)
+
 // ---- Gesichtserkennung & Sperre ----
 let faceOn       = localStorage.getItem('jarvis_face') === 'true';
 let faceLock     = localStorage.getItem('jarvis_face_lock') === 'true';
