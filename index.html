@@ -491,6 +491,8 @@
   @keyframes bootload { to { width: 100%; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
   <div id="bgglow"></div>
@@ -520,6 +522,7 @@
       <div class="navbtn" data-view="trading" onclick="switchView('trading')"><span class="ic">📈</span> Trading</div>
       <div class="navbtn" data-view="money" onclick="switchView('money')"><span class="ic">💰</span> Geld verdienen</div>
       <div class="navbtn" data-view="shop" onclick="switchView('shop')"><span class="ic">🛒</span> Dropshipping</div>
+      <div class="navbtn" data-view="nav" onclick="switchView('nav')"><span class="ic">🗺️</span> Navigation</div>
       <div class="navbtn" onclick="carModeEnter()"><span class="ic">🚗</span> Auto-Modus</div>
     </div>
 
@@ -534,6 +537,27 @@
   <!-- Gesichtserkennung: verstecktes Video -->
   <video id="faceVideo" autoplay muted playsinline style="display:none;position:fixed;bottom:80px;right:16px;width:120px;height:90px;border-radius:10px;border:1px solid var(--border);z-index:800;object-fit:cover;opacity:0.7;"></video>
   <canvas id="faceCanvas" style="display:none;"></canvas>
+
+  <!-- Navigation View -->
+  <div class="view" id="view-nav" style="display:none;flex-direction:column;height:100%;padding:0;">
+    <!-- Suchleiste -->
+    <div style="display:flex;gap:8px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;">
+      <input id="navInput" placeholder="Ziel eingeben (z.B. Zürich HB, Bäckerstrasse 10…)" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;" onkeydown="if(event.key==='Enter') navSearch()">
+      <button onclick="navSearch()" style="padding:10px 18px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:700;cursor:pointer;font-size:15px;">🔍</button>
+      <button onclick="navLocate()" title="Mein Standort" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">📍</button>
+    </div>
+    <!-- Schnellziele -->
+    <div id="navQuick" style="display:flex;gap:8px;padding:8px 14px;flex-shrink:0;flex-wrap:wrap;background:var(--card);border-bottom:1px solid var(--border);">
+      <button onclick="navGo('home')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;">🏠 Nachhause</button>
+      <button onclick="navGo('work')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;">💼 Arbeit</button>
+      <button onclick="navSaveLocation('home')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(100,100,100,0.3);background:none;color:var(--muted);cursor:pointer;font-size:12px;">✏️ Heim setzen</button>
+      <button onclick="navSaveLocation('work')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(100,100,100,0.3);background:none;color:var(--muted);cursor:pointer;font-size:12px;">✏️ Arbeit setzen</button>
+    </div>
+    <!-- Info-Leiste -->
+    <div id="navInfo" style="padding:8px 14px;font-size:13px;color:var(--muted);flex-shrink:0;min-height:28px;background:var(--card);border-bottom:1px solid var(--border);"></div>
+    <!-- Karte -->
+    <div id="navMap" style="flex:1;min-height:300px;"></div>
+  </div>
 
   <!-- Car-Modus Overlay -->
   <div id="carOverlay" style="display:none;position:fixed;inset:0;z-index:8000;background:#0a0a0f;flex-direction:column;align-items:center;justify-content:space-between;padding:20px 16px 30px;">
@@ -567,9 +591,9 @@
     <div style="width:100%;max-width:500px;">
       <div style="font-size:12px;color:#555;margin-bottom:8px;text-align:center;letter-spacing:1px;">NAVIGATION</div>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-        <button onclick="carNav('home')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">🏠 Nachhause</button>
-        <button onclick="carNav('work')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">💼 Arbeit</button>
-        <button onclick="carNavCustom()" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">🔍 Ziel</button>
+        <button onclick="carModeExit();navGo('home')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">🏠 Nachhause</button>
+        <button onclick="carModeExit();navGo('work')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">💼 Arbeit</button>
+        <button onclick="carModeExit();switchView('nav')" style="flex:1;min-width:120px;padding:16px 10px;border-radius:14px;border:1px solid #222;background:#111;color:#fff;font-size:15px;cursor:pointer;">🗺️ Karte</button>
       </div>
     </div>
 
@@ -978,10 +1002,11 @@ function switchView(view){
   if(view !== currentView) sfxSwitch();
   currentView = view;
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-  document.getElementById('view-'+view).classList.add('active');
+  document.getElementById('view-'+view)?.classList.add('active');
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   rotateDialTo(view);
   const inp = inputBox(view); if(inp) inp.focus();
+  if(view==='nav') setTimeout(navInit, 100);
 }
 
 // ---- Holografischer Dreh-Wähler ----
@@ -1142,6 +1167,8 @@ async function respond(view, q){
   }
   const wxCity = matchWeatherCity(low);
   if(wxCity){ doWeatherCity(wxCity); return; }
+  const navDest = matchNavCmd(low, q);
+  if(navDest){ switchView('nav'); navRouteTo(navDest); return; }
   if(!apiKey){
     addMsg(view, 'Ich brauche zuerst deinen Claude API Key. Klick links unten auf **⚙️ Einstellungen** und füg ihn ein. 🔑','jarvis');
     openSettings(); return;
@@ -1528,6 +1555,9 @@ function handleVoice(txt){
   if(vm && vm[1]){ openVideo(vm[1].trim()); addMsg('chat','🎬 Video: **'+escHtml(vm[1].trim())+'**','jarvis'); busy=false; return; }
   // Auto-Modus
   if(matchCarMode(low)){ carModeEnter(); say('Auto-Modus aktiviert. Gute Fahrt, Kamil!'); busy=false; return; }
+  // Navigation
+  const navDest = matchNavCmd(low, txt);
+  if(navDest){ switchView('nav'); navRouteTo(navDest); say('Navigiere zu '+navDest); busy=false; return; }
   // Spotify steuern
   const spCmd = matchSpotify(low, txt);
   if(spCmd){
@@ -2618,6 +2648,97 @@ function importSettings(input){
   };
   reader.readAsText(file);
 }
+// ---- Navigation (Leaflet + OpenStreetMap + OSRM Routing) ----
+let navMap = null, navUserMarker = null, navDestMarker = null, navRouteLine = null;
+let navUserPos = null;
+
+function navInit(){
+  if(navMap) return;
+  navMap = L.map('navMap').setView([47.37, 8.54], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'© OpenStreetMap', maxZoom:19
+  }).addTo(navMap);
+  // Standort
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(p=>{
+      navUserPos = [p.coords.latitude, p.coords.longitude];
+      navMap.setView(navUserPos, 15);
+      navUserMarker = L.marker(navUserPos, {title:'Mein Standort'})
+        .bindPopup('📍 Du bist hier').addTo(navMap);
+    });
+    navigator.geolocation.watchPosition(p=>{
+      navUserPos = [p.coords.latitude, p.coords.longitude];
+      if(navUserMarker) navUserMarker.setLatLng(navUserPos);
+    });
+  }
+}
+
+function navLocate(){
+  if(!navMap) navInit();
+  if(navUserPos){ navMap.setView(navUserPos, 16); }
+  else { navigator.geolocation.getCurrentPosition(p=>{ navUserPos=[p.coords.latitude,p.coords.longitude]; navMap.setView(navUserPos,16); }); }
+}
+
+async function navSearch(){
+  const q = (el('#navInput')?.value||'').trim();
+  if(!q) return;
+  navRouteTo(q);
+}
+
+async function navRouteTo(destination){
+  if(!navMap) navInit();
+  el('#navInfo').textContent = '🔎 Suche „'+destination+'"…';
+  // Geocode Ziel
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(destination)+'&limit=1&addressdetails=1', {headers:{'Accept-Language':'de'}});
+  const res = await r.json();
+  if(!res||!res.length){ el('#navInfo').textContent = '❌ Ziel nicht gefunden: '+destination; return; }
+  const dest = [parseFloat(res[0].lat), parseFloat(res[0].lon)];
+  const destName = res[0].display_name.split(',').slice(0,2).join(', ');
+  // Ziel-Marker
+  if(navDestMarker) navMap.removeLayer(navDestMarker);
+  navDestMarker = L.marker(dest).bindPopup('🎯 '+destName).addTo(navMap).openPopup();
+  // Route berechnen falls Standort bekannt
+  if(navUserPos){
+    try{
+      const rr = await fetch(`https://router.project-osrm.org/route/v1/driving/${navUserPos[1]},${navUserPos[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson`);
+      const rd = await rr.json();
+      if(rd.routes&&rd.routes[0]){
+        if(navRouteLine) navMap.removeLayer(navRouteLine);
+        navRouteLine = L.geoJSON(rd.routes[0].geometry,{style:{color:'#35c8ff',weight:5,opacity:0.8}}).addTo(navMap);
+        navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]});
+        const dist = (rd.routes[0].distance/1000).toFixed(1);
+        const mins = Math.round(rd.routes[0].duration/60);
+        el('#navInfo').textContent = `🎯 ${destName} · ${dist} km · ca. ${mins} Min`;
+        return;
+      }
+    }catch(e){}
+  }
+  // Kein Standort: nur Ziel zeigen
+  navMap.setView(dest, 14);
+  el('#navInfo').textContent = '🎯 '+destName;
+}
+
+function navGo(key){
+  const saved = localStorage.getItem('car_'+key);
+  if(saved){ switchView('nav'); navRouteTo(saved); }
+  else { navSaveLocation(key); }
+}
+
+function navSaveLocation(key){
+  const label = key==='home'?'Heimadresse':'Arbeitsadresse';
+  const addr = prompt(label+' eingeben:');
+  if(!addr) return;
+  localStorage.setItem('car_'+key, addr);
+  switchView('nav'); navRouteTo(addr);
+}
+
+// Sprachbefehl Navigation
+function matchNavCmd(low, txt){
+  const m = txt.match(/(?:navigiere?\s+(?:zu|nach|zu[mr])|fahr\s+(?:mich\s+)?(?:zu|nach)|zeig\s+(?:mir\s+)?(?:den\s+weg\s+(?:zu|nach)|wie\s+ich\s+(?:zu|nach))\s*|route\s+(?:zu|nach))\s+(.+)/i);
+  if(m) return m[1].trim();
+  return null;
+}
+
 // ---- Car-Modus ----
 let carWakeLock = null;
 let carClockTimer = null;
