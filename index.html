@@ -490,6 +490,7 @@
   .bootBar i { display:block; height:100%; width:0; background: linear-gradient(90deg, var(--blue), var(--cyan)); box-shadow:0 0 12px var(--cyan); animation: bootload 2.4s ease forwards; }
   @keyframes bootload { to { width: 100%; } }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 </head>
 <body>
   <div id="bgglow"></div>
@@ -528,6 +529,10 @@
       <div class="status offline" id="status" onclick="openSettings()">● Einrichten</div>
     </div>
   </div>
+
+  <!-- Gesichtserkennung: verstecktes Video -->
+  <video id="faceVideo" autoplay muted playsinline style="display:none;position:fixed;bottom:80px;right:16px;width:120px;height:90px;border-radius:10px;border:1px solid var(--border);z-index:800;object-fit:cover;opacity:0.7;"></video>
+  <canvas id="faceCanvas" style="display:none;"></canvas>
 
   <!-- Spotify Mini-Player -->
   <div id="spPlayer" style="display:none;position:fixed;bottom:16px;right:16px;z-index:900;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 14px;min-width:220px;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,.4);">
@@ -813,6 +818,15 @@
       <input id="spClientId" placeholder="32-stellige Spotify Client-ID">
       <button class="save" style="margin-top:10px;width:100%;" onclick="spotifyConnect()">🔗 Mit Spotify verbinden</button>
       <div id="spStatus" style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.4;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">👤 Gesichtserkennung</h2>
+      <p>Jarvis begrüsst dich automatisch, wenn er dein Gesicht erkennt. Kamera bleibt im Hintergrund.</p>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" id="faceOnInput" style="width:18px;height:18px;">
+        Gesichtserkennung aktivieren
+      </label>
+      <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;"></div>
 
       <div class="row">
         <button class="save" onclick="saveSettings()">Speichern</button>
@@ -2485,6 +2499,8 @@ function openSettings(){
   if(el('#spClientId')) el('#spClientId').value = spClientId;
   if(el('#spStatus')) el('#spStatus').textContent = spToken ? '✅ Verbunden' : (spClientId ? '⚠️ Noch nicht autorisiert – auf „Verbinden" klicken' : '');
   if(el('spRedirectUri')) el('spRedirectUri').textContent = location.origin + location.pathname;
+  if(el('#faceOnInput')) el('#faceOnInput').checked = faceOn;
+  if(el('faceStatus')) el('faceStatus').textContent = faceOn ? (faceDetecting ? '✅ Aktiv – Kamera läuft' : '⏳ Wird gestartet…') : '';
   el('#voiceModeInput').value=voiceMode;
   el('#ytKeyInput').value=ytKey;
   renderMem();
@@ -2516,6 +2532,74 @@ function importSettings(input){
   };
   reader.readAsText(file);
 }
+// ---- Gesichtserkennung ----
+let faceOn = localStorage.getItem('jarvis_face') === 'true';
+let faceGreeted = false;
+let faceStream = null;
+let faceLoaded = false;
+let faceDetecting = false;
+
+async function loadFaceModels(){
+  if(faceLoaded) return true;
+  try{
+    const base = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+    faceLoaded = true;
+    return true;
+  }catch(e){ return false; }
+}
+
+async function startFaceDetection(){
+  if(!faceOn || faceDetecting) return;
+  const statusEl = el('faceStatus');
+  if(statusEl) statusEl.textContent = '⏳ Lade Modell…';
+  const ok = await loadFaceModels();
+  if(!ok){
+    if(statusEl) statusEl.textContent = '❌ Modell konnte nicht geladen werden.';
+    return;
+  }
+  try{
+    faceStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:320, height:240 } });
+    const vid = el('faceVideo');
+    vid.srcObject = faceStream;
+    faceDetecting = true;
+    if(statusEl) statusEl.textContent = '✅ Aktiv – Kamera läuft';
+    faceDetectLoop();
+  }catch(e){
+    if(statusEl) statusEl.textContent = '❌ Kamera-Zugriff verweigert.';
+  }
+}
+
+async function faceDetectLoop(){
+  if(!faceOn || !faceDetecting) return;
+  const vid = el('faceVideo');
+  if(vid.readyState >= 2){
+    const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }));
+    if(det && !faceGreeted){
+      faceGreeted = true;
+      const greetings = [
+        'Willkommen zurück, Kamil! Schön, dich zu sehen. 😊',
+        'Hey Kamil! Ich bin bereit. Was kann ich für dich tun?',
+        'Guten Tag, Kamil! Was steht heute an?',
+        'Da bist du ja, Kamil! Wie kann ich helfen?'
+      ];
+      const msg = greetings[Math.floor(Math.random()*greetings.length)];
+      addMsg('chat', msg, 'jarvis');
+      speak(msg.replace(/[😊]/g,''));
+      switchView('chat');
+      // Nach 30 Min wieder grüssen erlauben
+      setTimeout(()=>{ faceGreeted = false; }, 30*60*1000);
+    }
+  }
+  setTimeout(faceDetectLoop, 1500);
+}
+
+function stopFaceDetection(){
+  faceDetecting = false;
+  if(faceStream){ faceStream.getTracks().forEach(t=>t.stop()); faceStream=null; }
+  const vid = el('faceVideo'); if(vid) vid.srcObject = null;
+}
+
 // ---- Spotify Integration (PKCE OAuth + Web API) ----
 let spClientId = localStorage.getItem('sp_client_id') || '';
 let spToken    = localStorage.getItem('sp_token') || '';
@@ -2719,6 +2803,12 @@ function saveSettings(){
   ytKey = el('#ytKeyInput').value.trim(); localStorage.setItem('jarvis_ytkey', ytKey);
   haUrl = el('#haUrl').value.trim().replace(/\/$/,'') || 'http://localhost:8123'; haToken = el('#haToken').value.trim();
   localStorage.setItem('ha_url', haUrl); localStorage.setItem('ha_token', haToken);
+  const newFaceOn = el('#faceOnInput')?.checked || false;
+  if(newFaceOn !== faceOn){
+    faceOn = newFaceOn;
+    localStorage.setItem('jarvis_face', faceOn);
+    if(faceOn) startFaceDetection(); else stopFaceDetection();
+  }
   closeSettings(); updateStatus();
   if(apiKey) addMsg('chat','✅ Alles gespeichert! Ich bin voll da. 🚀','jarvis');
 }
@@ -3208,7 +3298,8 @@ function alarmTimer(){
 buildDial(); renderHome(); renderScenes(); updateStatus();
 window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
-updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();   // Dashboard
+updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();
+if(faceOn) startFaceDetection();
 setInterval(renderChips, 30*60*1000);   // Schnell-Buttons an Tageszeit anpassen (halbstündlich)
 setInterval(renderAlerts, 60*1000);     // Meldungen aktuell halten (Timer/Lampen/Wetter)
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
