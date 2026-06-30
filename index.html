@@ -1109,7 +1109,7 @@ async function askClaude(view, userText){
     sys += '\n\nDas weißt du dauerhaft über Kamil (nutze es natürlich, wenn relevant – erwähne es nicht ungefragt):\n- '+jarvisMem.map(m=>m.text).join('\n- ');
   }
   if(view==='chat' && myLoc){
-    sys += '\n\nKamils ungefährer Standort: '+myLoc.lat+','+myLoc.lon+'. Bei Orts-/Navigationsfragen („wo ist die nächste Tankstelle/Restaurant/Apotheke", „navigiere zu …", „in der Nähe") gib einen anklickbaren Google-Maps-Link: [📍 Auf Karte öffnen](https://www.google.com/maps/search/SUCHE/@'+myLoc.lat+','+myLoc.lon+',15z) – ersetze SUCHE durch den URL-kodierten Suchbegriff.';
+    sys += '\n\nKamils ungefährer Standort: '+myLoc.lat+','+myLoc.lon+'. Bei Orts-/Navigationsfragen antworte kurz mit dem Ortsnamen oder der Adresse – die Navigation wird intern über OpenStreetMap geöffnet, keine Google-Maps-Links generieren.';
   }
   const tools = [];
   if (webOn && (view==='trading' || view==='money' || view==='shop'))
@@ -1586,9 +1586,9 @@ function handleVoice(txt){
     tasks.push({ text: rem[1].trim(), due:'', done:false }); saveTasks(); renderTasks();
     switchView('home'); say('Notiert: '+rem[1].trim()); return;
   }
-  // Navigation / Orte (Google Maps)
+  // Navigation / Orte (intern)
   const place = matchPlaces(low, txt);
-  if(place){ openPlaces(place); return; }
+  if(place){ switchView('nav'); navRouteTo(place); return; }
   // 1) Bereich wechseln
   const nav = matchNav(low);
   if(nav){ switchView(nav.view); say('Wechsle zu '+nav.label+'.'); return; }
@@ -3207,11 +3207,8 @@ function openPlaces(query){
   doOpenPlaces(query);
 }
 function doOpenPlaces(query){
-  const url = mapsUrl(query);
-  switchView('chat'); sfxReceive();
-  addMsg('chat','🗺️ **'+escHtml(query)+'** in deiner Nähe:\n[📍 Auf Google Maps öffnen]('+url+')','jarvis');
-  speak('Ich habe '+query+' in deiner Nähe herausgesucht. Tipp auf den Link.');
-  try{ window.open(url,'_blank'); }catch(e){}
+  switchView('nav');
+  navRouteTo(query);
 }
 function matchPlaces(low, txt){
   const trig = /(wo ist|wo finde ich|wo gibt|finde mir|finde die|n[äa]chste|in der n[äa]he|navigier|bring mich|fahr mich|route zu|weg zu|zeig mir den weg)/.test(low);
