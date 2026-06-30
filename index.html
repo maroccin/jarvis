@@ -1125,7 +1125,7 @@ async function askClaude(view, userText){
     sys += '\n\nDas weißt du dauerhaft über Kamil (nutze es natürlich, wenn relevant – erwähne es nicht ungefragt):\n- '+jarvisMem.map(m=>m.text).join('\n- ');
   }
   if(view==='chat' && myLoc){
-    sys += '\n\nKamils ungefährer Standort: '+myLoc.lat+','+myLoc.lon+'. Bei Orts-/Navigationsfragen antworte kurz mit dem Ortsnamen oder der Adresse – die Navigation wird intern über OpenStreetMap geöffnet, keine Google-Maps-Links generieren.';
+    sys += '\n\nKamils ungefährer Standort: '+myLoc.lat+','+myLoc.lon+'. WICHTIG bei Orts-/Navigationsfragen: Antworte NUR mit einem kurzen Satz und dem Ortsnamen. Erzeuge NIEMALS Links – keine Google-Maps-Links, keine OpenStreetMap-Links, keine Adress-Links, gar keine URLs. Die Navigation übernimmt Jarvis intern selbst.';
   }
   const tools = [];
   if (webOn && (view==='trading' || view==='money' || view==='shop'))
@@ -3786,7 +3786,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v2.5 · Navi-Ansicht Fix';
+const JARVIS_VERSION = 'v2.6 · Navi intern';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
