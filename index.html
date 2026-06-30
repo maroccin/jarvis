@@ -490,7 +490,7 @@
   .bootBar i { display:block; height:100%; width:0; background: linear-gradient(90deg, var(--blue), var(--cyan)); box-shadow:0 0 12px var(--cyan); animation: bootload 2.4s ease forwards; }
   @keyframes bootload { to { width: 100%; } }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
 </head>
 <body>
   <div id="bgglow"></div>
@@ -2558,7 +2558,7 @@ let faceStream   = null;
 let faceLoaded   = false;
 let faceDetecting= false;
 let faceUnknownCount = 0;
-const FACE_BASE  = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+const FACE_BASE  = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model';
 
 async function loadFaceModels(){
   if(faceLoaded) return true;
