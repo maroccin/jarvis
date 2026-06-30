@@ -551,6 +551,7 @@
       <button onclick="navSearch()" style="padding:10px 18px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:700;cursor:pointer;font-size:15px;">🔍</button>
       <button onclick="navLocate()" title="Auf mich zentrieren / folgen" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">📍</button>
       <button onclick="navOverview()" title="Ganze Route zeigen" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">🗺️</button>
+      <button id="navDemoBtn" onclick="navDemo()" title="Demo-Fahrt starten" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">▶️</button>
     </div>
     <!-- Schnellziele -->
     <div id="navQuick" style="display:flex;gap:8px;padding:8px 14px;flex-shrink:0;flex-wrap:wrap;background:var(--card);border-bottom:1px solid var(--border);">
@@ -2674,6 +2675,8 @@ let navStepIdx = 0;
 let navActive = false;
 let navWarned = {};        // pro Schritt: Vorwarnung bereits gesprochen?
 let navFollow = true;     // Karte folgt der eigenen Position (Fahransicht)
+let navRouteCoords = [];  // [[lat,lon],...] der ganzen Route (für Demo-Fahrt)
+let navDemoTimer = null;  // läuft die Demo-Simulation?
 
 function navInit(){
   if(navMap) return;
@@ -2795,6 +2798,7 @@ function navRenderSteps(){
 function navStop(arrived){
   navActive = false;
   navSteps = []; navStepIdx = 0; navWarned = {};
+  navDemoStop();
   const b=el('#navBanner'); if(b) b.style.display='none';
   navRenderSteps();
   if(!arrived) el('#navInfo').textContent = 'Navigation beendet.';
@@ -2810,6 +2814,26 @@ function navLocate(){
 function navOverview(){
   navFollow = false;
   if(navMap && navRouteLine){ navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]}); }
+}
+// Demo-Fahrt: simuliert die Bewegung entlang der Route (zum Testen am PC)
+function navDemo(){
+  if(navDemoTimer){ navDemoStop(); return; }
+  if(!navRouteCoords.length){ el('#navInfo').textContent='Erst ein Ziel eingeben, dann Demo starten.'; return; }
+  navActive = true; navFollow = true;
+  const btn = el('#navDemoBtn'); if(btn){ btn.textContent='⏹️'; btn.title='Demo stoppen'; }
+  let i = 0;
+  navDemoTimer = setInterval(()=>{
+    if(i >= navRouteCoords.length){ navDemoStop(); return; }
+    navUserPos = navRouteCoords[i];
+    if(navUserMarker) navUserMarker.setLatLng(navUserPos);
+    else if(navMap) navUserMarker = L.marker(navUserPos).addTo(navMap);
+    navGuidanceTick();
+    i += 2;   // alle 2 Punkte = etwas schneller
+  }, 350);
+}
+function navDemoStop(){
+  if(navDemoTimer){ clearInterval(navDemoTimer); navDemoTimer=null; }
+  const btn = el('#navDemoBtn'); if(btn){ btn.textContent='▶️'; btn.title='Demo-Fahrt starten'; }
 }
 
 async function navSearch(){
@@ -2842,6 +2866,7 @@ async function navRouteTo(destination){
         const route = rd.routes[0];
         if(navRouteLine) navMap.removeLayer(navRouteLine);
         navRouteLine = L.geoJSON(route.geometry,{style:{color:'#35c8ff',weight:5,opacity:0.8}}).addTo(navMap);
+        navRouteCoords = (route.geometry.coordinates||[]).map(c=>[c[1],c[0]]); // [lon,lat] -> [lat,lon]
         const dist = (route.distance/1000).toFixed(1);
         const mins = Math.round(route.duration/60);
         el('#navInfo').textContent = `🎯 ${destName} · ${dist} km · ca. ${mins} Min`;
@@ -3798,7 +3823,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v2.7 · Fahransicht (folgt dir)';
+const JARVIS_VERSION = 'v2.8 · Demo-Fahrt';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
