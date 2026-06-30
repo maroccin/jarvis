@@ -556,7 +556,7 @@
       <button onclick="spotifyPrev()" title="Zurück" style="background:none;border:none;color:var(--text);font-size:18px;cursor:pointer;padding:4px;">⏮</button>
       <button id="spPlayBtn" onclick="spotifyToggle()" title="Play/Pause" style="background:var(--accent);border:none;color:#000;font-size:16px;border-radius:50%;width:34px;height:34px;cursor:pointer;">▶</button>
       <button onclick="spotifyNext()" title="Weiter" style="background:none;border:none;color:var(--text);font-size:18px;cursor:pointer;padding:4px;">⏭</button>
-      <button onclick="el('spPlayer').style.display='none'" title="Schliessen" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:4px;margin-left:4px;">✕</button>
+      <button onclick="el('#spPlayer').style.display='none'" title="Schliessen" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:4px;margin-left:4px;">✕</button>
     </div>
   </div>
 
@@ -2513,11 +2513,11 @@ function openSettings(){
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
   if(el('#spClientId')) el('#spClientId').value = spClientId;
   if(el('#spStatus')) el('#spStatus').textContent = spToken ? '✅ Verbunden' : (spClientId ? '⚠️ Noch nicht autorisiert – auf „Verbinden" klicken' : '');
-  if(el('spRedirectUri')) el('spRedirectUri').textContent = location.origin + location.pathname;
+  if(el('#spRedirectUri')) el('#spRedirectUri').textContent = location.origin + location.pathname;
   if(el('#faceOnInput')) el('#faceOnInput').checked = faceOn;
   if(el('#faceLockInput')) el('#faceLockInput').checked = faceLock;
   const hasProfile = !!localStorage.getItem('jarvis_face_desc');
-  if(el('faceStatus')) el('faceStatus').textContent = faceOn ? (faceDetecting ? '✅ Aktiv' : '⏳ Wird gestartet…') + (hasProfile?' · Profil vorhanden':' · ⚠️ Noch kein Gesicht eingelernt') : (hasProfile?'Profil vorhanden':'');
+  if(el('#faceStatus')) el('#faceStatus').textContent = faceOn ? (faceDetecting ? '✅ Aktiv' : '⏳ Wird gestartet…') + (hasProfile?' · Profil vorhanden':' · ⚠️ Noch kein Gesicht eingelernt') : (hasProfile?'Profil vorhanden':'');
   el('#voiceModeInput').value=voiceMode;
   el('#ytKeyInput').value=ytKey;
   renderMem();
@@ -2573,7 +2573,7 @@ async function loadFaceModels(){
   }catch(e){ return false; }
 }
 
-function faceSetStatus(msg){ const d=el('faceStatus'); if(d) d.textContent=msg; }
+function faceSetStatus(msg){ const d=el('#faceStatus'); if(d) d.textContent=msg; }
 
 async function faceLearn(){
   faceSetStatus('⏳ Modelle laden…');
@@ -2581,7 +2581,7 @@ async function faceLearn(){
   if(!ok){ faceSetStatus('❌ Modelle konnten nicht geladen werden.'); return; }
   try{
     const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
-    const vid = el('faceVideo'); vid.srcObject = stream; vid.style.display='block';
+    const vid = el('#faceVideo'); vid.srcObject = stream; vid.style.display='block';
     faceSetStatus('📸 Schau in die Kamera… (3 Sekunden)');
     await new Promise(r=>setTimeout(r,3000));
     const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
@@ -2604,11 +2604,11 @@ function faceGetDescriptor(){
   return s ? new Float32Array(JSON.parse(s)) : null;
 }
 
-function faceLockOverlayShow(){ el('faceLockOverlay').style.display='flex'; faceLocked=true; }
-function faceLockOverlayHide(){ el('faceLockOverlay').style.display='none'; faceLocked=false; faceUnknownCount=0; }
+function faceLockOverlayShow(){ el('#faceLockOverlay').style.display='flex'; faceLocked=true; }
+function faceLockOverlayHide(){ el('#faceLockOverlay').style.display='none'; faceLocked=false; faceUnknownCount=0; }
 async function faceLockOverlayUnlock(){
   // Erneut scannen ob Kamil jetzt da ist
-  const vid = el('faceVideo');
+  const vid = el('#faceVideo');
   const saved = faceGetDescriptor();
   if(!saved){ faceLockOverlayHide(); return; }
   const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
@@ -2616,9 +2616,9 @@ async function faceLockOverlayUnlock(){
   if(det){
     const dist = faceapi.euclideanDistance(saved, det.descriptor);
     if(dist < 0.5){ faceLockOverlayHide(); faceDoGreet(); }
-    else { el('faceLockOverlay').querySelector('div:nth-child(4)').textContent='Nicht erkannt. Nochmal versuchen.'; }
+    else { el('#faceLockOverlay').querySelector('div:nth-child(4)').textContent='Nicht erkannt. Nochmal versuchen.'; }
   } else {
-    el('faceLockOverlay').querySelector('div:nth-child(4)').textContent='Kein Gesicht erkannt – nochmal versuchen.';
+    el('#faceLockOverlay').querySelector('div:nth-child(4)').textContent='Kein Gesicht erkannt – nochmal versuchen.';
   }
 }
 
@@ -2647,7 +2647,7 @@ async function startFaceDetection(){
   if(!ok){ faceSetStatus('❌ Modelle konnten nicht geladen werden.'); return; }
   try{
     faceStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
-    const vid = el('faceVideo'); vid.srcObject = faceStream;
+    const vid = el('#faceVideo'); vid.srcObject = faceStream;
     faceDetecting = true;
     faceSetStatus('✅ Aktiv');
     faceDetectLoop();
@@ -2656,7 +2656,7 @@ async function startFaceDetection(){
 
 async function faceDetectLoop(){
   if(!faceOn || !faceDetecting) return;
-  const vid = el('faceVideo');
+  const vid = el('#faceVideo');
   if(vid.readyState >= 2){
     const saved = faceGetDescriptor();
     if(saved){
@@ -2688,7 +2688,7 @@ async function faceDetectLoop(){
 function stopFaceDetection(){
   faceDetecting = false;
   if(faceStream){ faceStream.getTracks().forEach(t=>t.stop()); faceStream=null; }
-  const vid = el('faceVideo'); if(vid){ vid.srcObject=null; vid.style.display='none'; }
+  const vid = el('#faceVideo'); if(vid){ vid.srcObject=null; vid.style.display='none'; }
   faceLockOverlayHide();
 }
 
@@ -2803,7 +2803,7 @@ async function spotifyPlay(query){
 async function spotifyPause(){
   await spApi('PUT', '/me/player/pause', {});
   spPlaying = false;
-  const b = el('spPlayBtn'); if(b) b.textContent = '▶';
+  const b = el('#spPlayBtn'); if(b) b.textContent = '▶';
   addMsg('chat','⏸ Spotify pausiert.','jarvis');
 }
 
@@ -2840,18 +2840,18 @@ async function spotifyNowPlaying(){
 async function spPollNow(){
   if(!spToken) return;
   const s = await spApi('GET', '/me/player/currently-playing');
-  if(!s || !s.item){ el('spPlayer').style.display='none'; return; }
+  if(!s || !s.item){ el('#spPlayer').style.display='none'; return; }
   spPlaying = s.is_playing;
-  el('spPlayer').style.display = 'block';
-  el('spTrack').textContent  = s.item.name;
-  el('spArtist').textContent = s.item.artists.map(a=>a.name).join(', ');
-  el('spPlayBtn').textContent = s.is_playing ? '⏸' : '▶';
+  el('#spPlayer').style.display = 'block';
+  el('#spTrack').textContent  = s.item.name;
+  el('#spArtist').textContent = s.item.artists.map(a=>a.name).join(', ');
+  el('#spPlayBtn').textContent = s.is_playing ? '⏸' : '▶';
   const img = s.item.album?.images?.[0]?.url;
-  if(img) el('spArt').src = img; else el('spArt').src = '';
+  if(img) el('#spArt').src = img; else el('#spArt').src = '';
 }
 
 function spUpdateStatus(msg){
-  const d = el('spStatus'); if(d) d.textContent = msg;
+  const d = el('#spStatus'); if(d) d.textContent = msg;
 }
 
 // Spotify-Sprachbefehle erkennen
@@ -2878,7 +2878,7 @@ function matchSpotify(low, txt){
   const urlCode = new URLSearchParams(location.search).get('code');
   if(urlCode && spClientId) await spExchangeCode(urlCode);
   if(spToken) spPollNow();
-  if(el('spRedirectUri')) el('spRedirectUri').textContent = location.origin + location.pathname;
+  if(el('#spRedirectUri')) el('#spRedirectUri').textContent = location.origin + location.pathname;
 })();
 
 function saveSettings(){
