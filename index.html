@@ -494,8 +494,8 @@
   @keyframes bootload { to { width: 100%; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 </head>
 <body>
   <div id="bgglow"></div>
@@ -1024,7 +1024,7 @@ function switchView(view){
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
   rotateDialTo(view);
   const inp = inputBox(view); if(inp) inp.focus();
-  if(view==='nav') setTimeout(navInit, 100);
+  if(view==='nav') setTimeout(()=>{ navInit(); if(navMap) navMap.resize(); }, 120);
 }
 
 // ---- Holografischer Dreh-Wähler ----
@@ -2666,9 +2666,9 @@ function importSettings(input){
   };
   reader.readAsText(file);
 }
-// ---- Navigation (Leaflet + OpenStreetMap + OSRM Routing) ----
-let navMap = null, navUserMarker = null, navDestMarker = null, navRouteLine = null;
-let navUserPos = null;
+// ---- Navigation (MapLibre GL + OpenFreeMap + OSRM Routing, 3D-Fahransicht) ----
+let navMap = null, navUserMarker = null, navDestMarker = null;
+let navUserPos = null, navPrevPos = null;
 // Turn-by-Turn State
 let navSteps = [];        // [{text, icon, loc:[lat,lon], dist}]
 let navStepIdx = 0;
@@ -2680,24 +2680,68 @@ let navDemoTimer = null;  // läuft die Demo-Simulation?
 
 function navInit(){
   if(navMap) return;
-  navMap = L.map('navMap').setView([47.37, 8.54], 13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'© OpenStreetMap', maxZoom:19
-  }).addTo(navMap);
+  navMap = new maplibregl.Map({
+    container:'navMap',
+    style:'https://tiles.openfreemap.org/styles/liberty',
+    center:[8.54, 47.37], zoom:13, pitch:0, bearing:0,
+    attributionControl:{compact:true}
+  });
+  navMap.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-left');
+  // Wenn der Nutzer selbst die Karte zieht → Folge-Modus aus
+  navMap.on('dragstart', ()=>{ if(!navDemoTimer) navFollow=false; });
   // Standort
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(p=>{
       navUserPos = [p.coords.latitude, p.coords.longitude];
-      navMap.setView(navUserPos, 15);
-      navUserMarker = L.marker(navUserPos, {title:'Mein Standort'})
-        .bindPopup('📍 Du bist hier').addTo(navMap);
+      navMap.jumpTo({center:[navUserPos[1], navUserPos[0]], zoom:15});
+      navSetUserMarker();
     });
     navigator.geolocation.watchPosition(p=>{
       navUserPos = [p.coords.latitude, p.coords.longitude];
-      if(navUserMarker) navUserMarker.setLatLng(navUserPos);
+      navSetUserMarker();
       if(navActive) navGuidanceTick();
     }, ()=>{}, {enableHighAccuracy:true, maximumAge:2000});
   }
+}
+
+// Eigene Position als Marker (blauer Pfeil)
+function navSetUserMarker(){
+  if(!navMap || !navUserPos) return;
+  const ll = [navUserPos[1], navUserPos[0]];
+  if(navUserMarker) navUserMarker.setLngLat(ll);
+  else navUserMarker = new maplibregl.Marker({color:'#0a84ff'}).setLngLat(ll).addTo(navMap);
+}
+
+// Route als Linie auf der Karte zeichnen (wartet bis Kartenstil geladen)
+function navDrawRoute(geometry){
+  if(!navMap) return;
+  const data = {type:'Feature', geometry};
+  const add = ()=>{
+    if(navMap.getSource('route')) navMap.getSource('route').setData(data);
+    else {
+      navMap.addSource('route', {type:'geojson', data});
+      navMap.addLayer({ id:'route', type:'line', source:'route',
+        layout:{'line-join':'round','line-cap':'round'},
+        paint:{'line-color':'#35c8ff','line-width':7,'line-opacity':0.9} });
+    }
+  };
+  if(navMap.isStyleLoaded()) add(); else navMap.once('load', add);
+}
+
+// Begrenzungsrahmen der ganzen Route
+function navRouteBounds(){
+  const b = new maplibregl.LngLatBounds();
+  navRouteCoords.forEach(c=> b.extend([c[1], c[0]]));
+  return b;
+}
+
+// Peilung (Fahrtrichtung) zwischen zwei [lat,lon] in Grad
+function navBearing(a, b){
+  const toR=x=>x*Math.PI/180, toD=x=>x*180/Math.PI;
+  const dLon=toR(b[1]-a[1]);
+  const y=Math.sin(dLon)*Math.cos(toR(b[0]));
+  const x=Math.cos(toR(a[0]))*Math.sin(toR(b[0]))-Math.sin(toR(a[0]))*Math.cos(toR(b[0]))*Math.cos(dLon);
+  return (toD(Math.atan2(y,x))+360)%360;
 }
 
 // Entfernung zwischen zwei [lat,lon] in Metern (Haversine)
@@ -2738,8 +2782,13 @@ function navManeuver(step){
 // Live-Begleitung während der Fahrt
 function navGuidanceTick(){
   if(!navActive || !navSteps.length || !navUserPos) return;
-  // Karte folgt dir live (zentriert auf deine Position, nah herangezoomt)
-  if(navFollow && navMap){ navMap.setView(navUserPos, Math.max(navMap.getZoom(), 16), {animate:true}); }
+  // 3D-Fahransicht: schräg geneigt, zentriert auf dich, dreht sich in Fahrtrichtung
+  if(navFollow && navMap){
+    let bearing = navMap.getBearing();
+    if(navPrevPos && navGeoDist(navPrevPos, navUserPos) > 1) bearing = navBearing(navPrevPos, navUserPos);
+    navMap.easeTo({ center:[navUserPos[1], navUserPos[0]], zoom:17, pitch:60, bearing, duration:400 });
+  }
+  navPrevPos = navUserPos.slice();
   if(navStepIdx >= navSteps.length){ navStop(true); return; }
   const step = navSteps[navStepIdx];
   const d = navGeoDist(navUserPos, step.loc);
@@ -2807,13 +2856,13 @@ function navStop(arrived){
 function navLocate(){
   if(!navMap) navInit();
   navFollow = true;   // Folge-Modus wieder einschalten (Karte folgt dir)
-  if(navUserPos){ navMap.setView(navUserPos, 16, {animate:true}); }
-  else { navigator.geolocation.getCurrentPosition(p=>{ navUserPos=[p.coords.latitude,p.coords.longitude]; navMap.setView(navUserPos,16); }); }
+  if(navUserPos){ navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, pitch:60, duration:600}); }
+  else { navigator.geolocation.getCurrentPosition(p=>{ navUserPos=[p.coords.latitude,p.coords.longitude]; navSetUserMarker(); navMap.easeTo({center:[navUserPos[1],navUserPos[0]],zoom:17,pitch:60}); }); }
 }
-// Ganze Route zeigen (Übersicht) – schaltet Folge-Modus aus
+// Ganze Route zeigen (Übersicht, flach von oben) – schaltet Folge-Modus aus
 function navOverview(){
   navFollow = false;
-  if(navMap && navRouteLine){ navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]}); }
+  if(navMap && navRouteCoords.length){ navMap.fitBounds(navRouteBounds(),{padding:50, pitch:0, bearing:0, duration:600}); }
 }
 // Demo-Fahrt: simuliert die Bewegung entlang der Route (zum Testen am PC)
 function navDemo(){
@@ -2825,8 +2874,7 @@ function navDemo(){
   navDemoTimer = setInterval(()=>{
     if(i >= navRouteCoords.length){ navDemoStop(); return; }
     navUserPos = navRouteCoords[i];
-    if(navUserMarker) navUserMarker.setLatLng(navUserPos);
-    else if(navMap) navUserMarker = L.marker(navUserPos).addTo(navMap);
+    navSetUserMarker();
     navGuidanceTick();
     i += 2;   // alle 2 Punkte = etwas schneller
   }, 350);
@@ -2855,8 +2903,8 @@ async function navRouteTo(destination){
   const dest = [parseFloat(res[0].lat), parseFloat(res[0].lon)];
   const destName = res[0].display_name.split(',').slice(0,2).join(', ');
   // Ziel-Marker
-  if(navDestMarker) navMap.removeLayer(navDestMarker);
-  navDestMarker = L.marker(dest).bindPopup('🎯 '+destName).addTo(navMap).openPopup();
+  if(navDestMarker) navDestMarker.remove();
+  navDestMarker = new maplibregl.Marker({color:'#ff3b6b'}).setLngLat([dest[1], dest[0]]).addTo(navMap);
   // Route berechnen falls Standort bekannt
   if(navUserPos){
     try{
@@ -2864,8 +2912,7 @@ async function navRouteTo(destination){
       const rd = await rr.json();
       if(rd.routes&&rd.routes[0]){
         const route = rd.routes[0];
-        if(navRouteLine) navMap.removeLayer(navRouteLine);
-        navRouteLine = L.geoJSON(route.geometry,{style:{color:'#35c8ff',weight:5,opacity:0.8}}).addTo(navMap);
+        navDrawRoute(route.geometry);
         navRouteCoords = (route.geometry.coordinates||[]).map(c=>[c[1],c[0]]); // [lon,lat] -> [lat,lon]
         const dist = (route.distance/1000).toFixed(1);
         const mins = Math.round(route.duration/60);
@@ -2882,11 +2929,11 @@ async function navRouteTo(destination){
         navStepIdx = 0; navWarned = {};
         navRenderSteps();
         if(navSteps.length){
-          navActive = true; navFollow = true;
+          navActive = true; navFollow = true; navPrevPos = null;
           navBannerSet(navSteps[0].icon, '', navSteps[0].text);
-          // Fahransicht: kurz ganze Route zeigen, dann auf eigene Position zentrieren
-          navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]});
-          setTimeout(()=>{ if(navActive && navFollow && navUserPos) navMap.setView(navUserPos, 16, {animate:true}); }, 1800);
+          // Fahransicht: kurz ganze Route zeigen, dann in 3D auf eigene Position zoomen
+          navMap.fitBounds(navRouteBounds(),{padding:50, pitch:0, bearing:0, duration:800});
+          setTimeout(()=>{ if(navActive && navFollow && navUserPos) navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, pitch:60, duration:1200}); }, 2000);
           speak('Route nach '+destName+'. '+dist+' Kilometer, etwa '+mins+' Minuten. '+navSteps[0].text);
         }
         return;
@@ -2894,7 +2941,7 @@ async function navRouteTo(destination){
     }catch(e){}
   }
   // Kein Standort: nur Ziel zeigen
-  navMap.setView(dest, 14);
+  navMap.jumpTo({center:[dest[1], dest[0]], zoom:14});
   el('#navInfo').textContent = '🎯 '+destName+' (Standort unbekannt – tippe auf 📍)';
 }
 
@@ -3823,7 +3870,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v2.8 · Demo-Fahrt';
+const JARVIS_VERSION = 'v3.0 · 3D-Fahransicht';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
