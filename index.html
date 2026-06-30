@@ -555,8 +555,19 @@
     </div>
     <!-- Info-Leiste -->
     <div id="navInfo" style="padding:8px 14px;font-size:13px;color:var(--muted);flex-shrink:0;min-height:28px;background:var(--card);border-bottom:1px solid var(--border);"></div>
+    <!-- Aktuelle Anweisung (Banner) -->
+    <div id="navBanner" style="display:none;align-items:center;gap:14px;padding:14px 16px;background:#0a84ff;color:#fff;flex-shrink:0;">
+      <div id="navBannerIcon" style="font-size:34px;line-height:1;">⬆️</div>
+      <div style="flex:1;min-width:0;">
+        <div id="navBannerDist" style="font-size:13px;opacity:0.85;font-weight:600;">–</div>
+        <div id="navBannerText" style="font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">–</div>
+      </div>
+      <button onclick="navStop()" title="Navigation beenden" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:700;">✕</button>
+    </div>
     <!-- Karte -->
-    <div id="navMap" style="flex:1;min-height:300px;"></div>
+    <div id="navMap" style="flex:1;min-height:240px;"></div>
+    <!-- Abbiegeliste -->
+    <div id="navSteps" style="display:none;flex-shrink:0;max-height:34%;overflow-y:auto;background:var(--card);border-top:1px solid var(--border);"></div>
   </div>
 
   <!-- Car-Modus Overlay -->
@@ -2651,6 +2662,11 @@ function importSettings(input){
 // ---- Navigation (Leaflet + OpenStreetMap + OSRM Routing) ----
 let navMap = null, navUserMarker = null, navDestMarker = null, navRouteLine = null;
 let navUserPos = null;
+// Turn-by-Turn State
+let navSteps = [];        // [{text, icon, loc:[lat,lon], dist}]
+let navStepIdx = 0;
+let navActive = false;
+let navWarned = {};        // pro Schritt: Vorwarnung bereits gesprochen?
 
 function navInit(){
   if(navMap) return;
@@ -2669,8 +2685,110 @@ function navInit(){
     navigator.geolocation.watchPosition(p=>{
       navUserPos = [p.coords.latitude, p.coords.longitude];
       if(navUserMarker) navUserMarker.setLatLng(navUserPos);
-    });
+      if(navActive) navGuidanceTick();
+    }, ()=>{}, {enableHighAccuracy:true, maximumAge:2000});
   }
+}
+
+// Entfernung zwischen zwei [lat,lon] in Metern (Haversine)
+function navGeoDist(a, b){
+  const R=6371000, toR=x=>x*Math.PI/180;
+  const dLat=toR(b[0]-a[0]), dLon=toR(b[1]-a[1]);
+  const s=Math.sin(dLat/2)**2 + Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function navFmtDist(m){ return m>=1000 ? (m/1000).toFixed(1)+' km' : Math.round(m/10)*10+' m'; }
+
+// OSRM-Manöver → deutsche Anweisung + Icon
+function navManeuver(step){
+  const m = step.maneuver||{}, mod = m.modifier||'', name = step.name||'';
+  const onto = name ? ' auf '+name : '';
+  const dirTxt = {'left':'links abbiegen','right':'rechts abbiegen','slight left':'leicht links','slight right':'leicht rechts','sharp left':'scharf links abbiegen','sharp right':'scharf rechts abbiegen','straight':'geradeaus','uturn':'wenden'};
+  const dirIco = {'left':'⬅️','right':'➡️','slight left':'↖️','slight right':'↗️','sharp left':'⬅️','sharp right':'➡️','straight':'⬆️','uturn':'↩️'};
+  let text, icon = dirIco[mod] || '⬆️';
+  switch(m.type){
+    case 'depart':       text='Losfahren'+onto; icon='📍'; break;
+    case 'arrive':       text='Ziel erreicht'+(name?': '+name:''); icon='🏁'; break;
+    case 'turn':         text=(dirTxt[mod]||'abbiegen')+onto; break;
+    case 'end of road':  text='Am Ende '+(dirTxt[mod]||'abbiegen')+onto; break;
+    case 'new name':     text='Weiter'+onto; icon='⬆️'; break;
+    case 'continue':     text='Geradeaus weiter'+onto; icon='⬆️'; break;
+    case 'merge':        text='Einfädeln'+onto; icon='🔀'; break;
+    case 'on ramp':      text='Auffahrt nehmen'+onto; icon='🛣️'; break;
+    case 'off ramp':     text='Abfahrt nehmen'+onto; icon='🛣️'; break;
+    case 'fork':         text=(mod.includes('left')?'Links halten':mod.includes('right')?'Rechts halten':'Weiter')+onto; break;
+    case 'roundabout':
+    case 'rotary':       text='Im Kreisverkehr '+(m.exit||1)+'. Ausfahrt'+onto; icon='🔄'; break;
+    case 'roundabout turn': text=(dirTxt[mod]||'abbiegen')+onto; icon='🔄'; break;
+    default:             text=(dirTxt[mod]||'Weiter')+onto;
+  }
+  return {text, icon};
+}
+
+// Live-Begleitung während der Fahrt
+function navGuidanceTick(){
+  if(!navActive || !navSteps.length || !navUserPos) return;
+  if(navStepIdx >= navSteps.length){ navStop(true); return; }
+  const step = navSteps[navStepIdx];
+  const d = navGeoDist(navUserPos, step.loc);
+  // Banner aktualisieren
+  navBannerSet(step.icon, navFmtDist(d), step.text);
+  // Vorwarnung (einmalig) ab ~250 m
+  if(d <= 250 && d > 60 && !navWarned[navStepIdx]){
+    navWarned[navStepIdx] = true;
+    speak('In '+navFmtDist(d)+' '+step.text);
+  }
+  // Manöver erreicht → nächster Schritt
+  if(d <= 40){
+    navStepHighlight(navStepIdx, true);
+    navStepIdx++;
+    if(navStepIdx < navSteps.length){
+      const nx = navSteps[navStepIdx];
+      speak(nx.text);
+      navBannerSet(nx.icon, '', nx.text);
+      navStepHighlight(navStepIdx, false);
+    } else {
+      speak('Du hast dein Ziel erreicht.');
+      navStop(true);
+    }
+  }
+}
+
+function navBannerSet(icon, dist, text){
+  const b=el('#navBanner'); if(!b) return;
+  b.style.display='flex';
+  el('#navBannerIcon').textContent = icon;
+  el('#navBannerDist').textContent = dist || '';
+  el('#navBannerText').textContent = text;
+}
+
+function navStepHighlight(idx, done){
+  const row = el('#navStep'+idx);
+  if(!row) return;
+  row.style.background = done ? 'transparent' : 'rgba(10,132,255,0.18)';
+  row.style.opacity = done ? '0.4' : '1';
+  if(!done) row.scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+
+function navRenderSteps(){
+  const box = el('#navSteps'); if(!box) return;
+  if(!navSteps.length){ box.style.display='none'; box.innerHTML=''; return; }
+  box.style.display='block';
+  box.innerHTML = navSteps.map((s,i)=>
+    '<div id="navStep'+i+'" style="display:flex;gap:12px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);'+(i===0?'background:rgba(10,132,255,0.18);':'')+'">'+
+      '<span style="font-size:22px;width:30px;text-align:center;flex-shrink:0;">'+s.icon+'</span>'+
+      '<span style="flex:1;font-size:14px;color:var(--text);">'+escHtml(s.text)+'</span>'+
+      '<span style="font-size:12px;color:var(--muted);flex-shrink:0;">'+navFmtDist(s.dist)+'</span>'+
+    '</div>'
+  ).join('');
+}
+
+function navStop(arrived){
+  navActive = false;
+  navSteps = []; navStepIdx = 0; navWarned = {};
+  const b=el('#navBanner'); if(b) b.style.display='none';
+  navRenderSteps();
+  if(!arrived) el('#navInfo').textContent = 'Navigation beendet.';
 }
 
 function navLocate(){
@@ -2687,6 +2805,9 @@ async function navSearch(){
 
 async function navRouteTo(destination){
   if(!navMap) navInit();
+  // Alte Navigation zurücksetzen
+  navActive=false; navSteps=[]; navStepIdx=0; navWarned={};
+  const bn=el('#navBanner'); if(bn) bn.style.display='none';
   el('#navInfo').textContent = '🔎 Suche „'+destination+'"…';
   // Geocode Ziel
   const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(destination)+'&limit=1&addressdetails=1', {headers:{'Accept-Language':'de'}});
@@ -2700,22 +2821,39 @@ async function navRouteTo(destination){
   // Route berechnen falls Standort bekannt
   if(navUserPos){
     try{
-      const rr = await fetch(`https://router.project-osrm.org/route/v1/driving/${navUserPos[1]},${navUserPos[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson`);
+      const rr = await fetch(`https://router.project-osrm.org/route/v1/driving/${navUserPos[1]},${navUserPos[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson&steps=true`);
       const rd = await rr.json();
       if(rd.routes&&rd.routes[0]){
+        const route = rd.routes[0];
         if(navRouteLine) navMap.removeLayer(navRouteLine);
-        navRouteLine = L.geoJSON(rd.routes[0].geometry,{style:{color:'#35c8ff',weight:5,opacity:0.8}}).addTo(navMap);
+        navRouteLine = L.geoJSON(route.geometry,{style:{color:'#35c8ff',weight:5,opacity:0.8}}).addTo(navMap);
         navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]});
-        const dist = (rd.routes[0].distance/1000).toFixed(1);
-        const mins = Math.round(rd.routes[0].duration/60);
+        const dist = (route.distance/1000).toFixed(1);
+        const mins = Math.round(route.duration/60);
         el('#navInfo').textContent = `🎯 ${destName} · ${dist} km · ca. ${mins} Min`;
+        // Turn-by-Turn Schritte aufbauen
+        navSteps = [];
+        (route.legs||[]).forEach(leg=>{
+          (leg.steps||[]).forEach(st=>{
+            const mv = navManeuver(st);
+            const loc = st.maneuver && st.maneuver.location; // [lon,lat]
+            navSteps.push({ text:mv.text, icon:mv.icon, dist:st.distance||0, loc: loc?[loc[1],loc[0]]:dest });
+          });
+        });
+        navStepIdx = 0; navWarned = {};
+        navRenderSteps();
+        if(navSteps.length){
+          navActive = true;
+          navBannerSet(navSteps[0].icon, '', navSteps[0].text);
+          speak('Route nach '+destName+'. '+dist+' Kilometer, etwa '+mins+' Minuten. '+navSteps[0].text);
+        }
         return;
       }
     }catch(e){}
   }
   // Kein Standort: nur Ziel zeigen
   navMap.setView(dest, 14);
-  el('#navInfo').textContent = '🎯 '+destName;
+  el('#navInfo').textContent = '🎯 '+destName+' (Standort unbekannt – tippe auf 📍)';
 }
 
 function navGo(key){
