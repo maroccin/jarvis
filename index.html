@@ -544,7 +544,7 @@
   <canvas id="faceCanvas" style="display:none;"></canvas>
 
   <!-- Navigation View -->
-  <div class="view" id="view-nav" style="display:none;flex-direction:column;height:100%;padding:0;">
+  <div class="view" id="view-nav" style="height:100%;padding:0;">
     <!-- Suchleiste -->
     <div style="display:flex;gap:8px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;">
       <input id="navInput" placeholder="Ziel eingeben (z.B. Zürich HB, Bäckerstrasse 10…)" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;" onkeydown="if(event.key==='Enter') navSearch()">
@@ -3786,7 +3786,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v2.4 · Turn-by-Turn Navi';
+const JARVIS_VERSION = 'v2.5 · Navi-Ansicht Fix';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
