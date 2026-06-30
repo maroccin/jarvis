@@ -2870,11 +2870,16 @@ function navSaveLocation(key){
   switchView('nav'); navRouteTo(addr);
 }
 
-// Sprachbefehl Navigation
+// Sprachbefehl Navigation – robust: erkennt Auslöser am Satzanfang und
+// entfernt Füllwörter (mich/zu/nach/zum/…) vor dem eigentlichen Ziel.
 function matchNavCmd(low, txt){
-  const m = txt.match(/(?:navigiere?\s+(?:zu|nach|zu[mr])|fahr\s+(?:mich\s+)?(?:zu|nach)|zeig\s+(?:mir\s+)?(?:den\s+weg\s+(?:zu|nach)|wie\s+ich\s+(?:zu|nach))\s*|route\s+(?:zu|nach))\s+(.+)/i);
-  if(m) return m[1].trim();
-  return null;
+  const m = txt.match(/^\s*(?:navigiere?|navigation|navi|fahr(?:e)?\s+mich|fahr(?:e)?|bring\s+mich|route|zeig\s+(?:mir\s+)?(?:den\s+)?weg)\b[\s,:]*(.*)$/i);
+  if(!m) return null;
+  let dest = (m[1]||'').trim();
+  // führende Füllwörter wiederholt strippen ("mich nach", "zur", "in die" …)
+  let prev;
+  do { prev = dest; dest = dest.replace(/^(?:mich|uns|bitte|jetzt|zu[mr]?|nach|in|zur|zum|den|die|das|der|zu)\b[\s,]*/i, '').trim(); } while(dest !== prev && dest);
+  return dest.length >= 2 ? dest : null;
 }
 
 // ---- Car-Modus ----
