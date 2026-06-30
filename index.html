@@ -2683,7 +2683,7 @@ function navInit(){
   navMap = new maplibregl.Map({
     container:'navMap',
     style:'https://tiles.openfreemap.org/styles/liberty',
-    center:[8.54, 47.37], zoom:13, pitch:0, bearing:0,
+    center:[8.54, 47.37], zoom:13, pitch:0, bearing:0, maxPitch:75,
     attributionControl:{compact:true}
   });
   navMap.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-left');
@@ -2786,7 +2786,8 @@ function navGuidanceTick(){
   if(navFollow && navMap){
     let bearing = navMap.getBearing();
     if(navPrevPos && navGeoDist(navPrevPos, navUserPos) > 1) bearing = navBearing(navPrevPos, navUserPos);
-    navMap.easeTo({ center:[navUserPos[1], navUserPos[0]], zoom:17, pitch:60, bearing, duration:400 });
+    if(navMap.getPitch() < 55) navMap.setPitch(65);   // Neigung garantiert setzen
+    navMap.easeTo({ center:[navUserPos[1], navUserPos[0]], zoom:17, bearing, duration:450 });
   }
   navPrevPos = navUserPos.slice();
   if(navStepIdx >= navSteps.length){ navStop(true); return; }
@@ -2856,8 +2857,8 @@ function navStop(arrived){
 function navLocate(){
   if(!navMap) navInit();
   navFollow = true;   // Folge-Modus wieder einschalten (Karte folgt dir)
-  if(navUserPos){ navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, pitch:60, duration:600}); }
-  else { navigator.geolocation.getCurrentPosition(p=>{ navUserPos=[p.coords.latitude,p.coords.longitude]; navSetUserMarker(); navMap.easeTo({center:[navUserPos[1],navUserPos[0]],zoom:17,pitch:60}); }); }
+  if(navUserPos){ navMap.setPitch(65); navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, duration:600}); }
+  else { navigator.geolocation.getCurrentPosition(p=>{ navUserPos=[p.coords.latitude,p.coords.longitude]; navSetUserMarker(); navMap.setPitch(65); navMap.easeTo({center:[navUserPos[1],navUserPos[0]],zoom:17}); }); }
 }
 // Ganze Route zeigen (Übersicht, flach von oben) – schaltet Folge-Modus aus
 function navOverview(){
@@ -2872,7 +2873,7 @@ function navDemo(){
   const btn = el('#navDemoBtn'); if(btn){ btn.textContent='⏹️'; btn.title='Demo stoppen'; }
   // Sofort in 3D-Schräglage gehen, am Startpunkt
   navUserPos = navRouteCoords[0]; navSetUserMarker();
-  if(navMap) navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, pitch:60, duration:800});
+  if(navMap){ navMap.setPitch(65); navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, duration:800}); }
   let i = 0;
   navDemoTimer = setInterval(()=>{
     if(i >= navRouteCoords.length){ navDemoStop(); return; }
@@ -2936,7 +2937,7 @@ async function navRouteTo(destination){
           navBannerSet(navSteps[0].icon, '', navSteps[0].text);
           // Fahransicht: kurz ganze Route zeigen, dann in 3D auf eigene Position zoomen
           navMap.fitBounds(navRouteBounds(),{padding:50, pitch:0, bearing:0, duration:800});
-          setTimeout(()=>{ if(navActive && navFollow && navUserPos) navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, pitch:60, duration:1200}); }, 2000);
+          setTimeout(()=>{ if(navActive && navFollow && navUserPos){ navMap.setPitch(65); navMap.easeTo({center:[navUserPos[1],navUserPos[0]], zoom:17, duration:1200}); } }, 2000);
           speak('Route nach '+destName+'. '+dist+' Kilometer, etwa '+mins+' Minuten. '+navSteps[0].text);
         }
         return;
@@ -3873,7 +3874,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.1 · 3D sofort geneigt';
+const JARVIS_VERSION = 'v3.2 · 3D setPitch';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
