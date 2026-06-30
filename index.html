@@ -152,6 +152,10 @@
   .livebtn { display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:600; letter-spacing:.5px; margin-bottom:8px; border:1px solid var(--border); background:rgba(53,200,255,0.12); transition:all .15s; box-shadow:0 0 14px rgba(53,200,255,0.12); }
   .livebtn:hover { border-color:var(--cyan); background:rgba(53,200,255,0.2); box-shadow:0 0 20px rgba(53,200,255,0.3); }
   .livebtn.live { background:var(--red); border-color:var(--red); color:#fff; animation: micpulse 1.2s infinite; }
+  .wakebtn { display:flex; align-items:center; justify-content:center; gap:8px; padding:10px 12px; border-radius:10px; cursor:pointer; font-size:13px; font-weight:600; letter-spacing:.5px; margin-bottom:8px; border:1px solid rgba(255,177,62,0.3); background:rgba(255,177,62,0.08); color:var(--amber); transition:all .15s; }
+  .wakebtn:hover { border-color:var(--amber); background:rgba(255,177,62,0.18); }
+  .wakebtn.wake-on { background:rgba(255,177,62,0.22); border-color:var(--amber); color:#ffe0a0; animation: micpulse 2.5s infinite; }
+  .wakebtn.wake-on::before { content:"●"; margin-right:4px; color:var(--amber); font-size:9px; }
 
   /* ---------- Hauptbereich ---------- */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -376,7 +380,7 @@
     .dialHubLabel { font-size: 9px; }
     #navlist { display: none; }
     .sidefoot { margin-top: 4px; display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; width: 100%; }
-    .livebtn { margin-bottom: 0; padding: 9px 14px; font-size: 12px; white-space: nowrap; }
+    .livebtn, .wakebtn { margin-bottom: 0; padding: 9px 14px; font-size: 12px; white-space: nowrap; }
     .status { padding: 9px 12px; white-space: nowrap; }
     .viewhead { padding: 14px 16px 4px; }
     .viewhead h2 { font-size: 17px; }
@@ -470,6 +474,7 @@
     </div>
 
     <div class="sidefoot">
+      <div class="wakebtn" id="wakeBtn" onclick="toggleWake()">⚡ Wake-Word</div>
       <div class="livebtn" id="liveBtn" onclick="toggleLive()">🎙️ Live-Gespräch</div>
       <div class="navbtn" onclick="openSettings()"><span class="ic">⚙️</span> Einstellungen</div>
       <div class="status offline" id="status" onclick="openSettings()">● Einrichten</div>
@@ -607,16 +612,38 @@
 
     <!-- Dropshipping -->
     <div class="view" id="view-shop">
-      <div class="viewhead"><h2>🛒 Dropshipping</h2><p>Shop-Ideen, Produkte und Aufbau – Jarvis legt mit dir los.</p></div>
+      <div class="viewhead">
+        <h2>🛒 Dropshipping</h2>
+        <p>Jarvis baut deinen Shop – von der Nische bis zum fertigen Produkt.</p>
+        <div id="shopifyBar" style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+          <div id="shopifyStatus" style="font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid rgba(255,177,62,0.4);background:rgba(255,177,62,0.08);color:var(--amber);cursor:pointer;" onclick="openShopifySetup()">🔗 Shopify verbinden (optional)</div>
+          <div id="shopifyPushBtn" style="display:none;font-size:12px;padding:7px 14px;border-radius:8px;border:1px solid rgba(62,224,122,0.4);background:rgba(62,224,122,0.08);color:var(--green);cursor:pointer;" onclick="shopifyPushProducts()">⬆️ Produkte zu Shopify</div>
+        </div>
+      </div>
       <div class="chat" id="chat-shop"></div>
       <div class="chips" id="chips-shop">
-        <div class="chip" onclick="ask('shop','Mach mir 3 fertige Dropshipping-Shop-Ideen mit Namen, Nische und Zielgruppe.')">⭐ Shop-Ideen</div>
-        <div class="chip" onclick="ask('shop','Welche Produkte sind 2026 im Trend fürs Dropshipping? Recherchiere.')">🔥 Trend-Produkte</div>
-        <div class="chip" onclick="ask('shop','Erstelle mir Shop-Name, Logo-Idee und Produkttexte für eine Fitness-Nische.')">✍️ Texte &amp; Name</div>
+        <div class="chip" onclick="shopNischeFinds()">🎯 Nische finden</div>
+        <div class="chip" onclick="shopBuildWebsite()">🌐 Webshop erstellen</div>
+        <div class="chip" onclick="ask('shop','Erstelle einen kompletten Dropshipping-Shop-Plan für MOTORRAD-ZUBEHÖR: Shop-Name, Slogan, Zielgruppe (Biker 25-55), 8 Produkte (z.B. Helme, Handschuhe, Jacken, Gepäck, Gadgets) mit Einkaufs- und Verkaufspreis, Lieferant, Marge. Dann: Top-3 AliExpress-Kategorien für Motorrad, Werbetipp für Facebook/Instagram Biker-Gruppen.')">🏍️ Motorrad-Nische</div>
+        <div class="chip" onclick="ask('shop','Erstelle einen kompletten Dropshipping-Shop-Plan für AUTO-ZUBEHÖR & TUNING: Shop-Name, Slogan, 8 Produkte (z.B. LED-Innenbeleuchtung, Dashcam, Sitzheizung, Organizer, Reinigungsset, Parklichter) mit Einkaufs-/Verkaufspreis und Marge. Lieferanten, Zielgruppe, Werbetipp für Autogruppen.')">🚗 Auto-Zubehör-Nische</div>
+        <div class="chip" onclick="ask('shop','Erstelle mir jetzt einen KOMPLETTEN Shop-Plan: Shop-Name, Slogan, Zielgruppe, 8 Produkte mit Einkaufs- und Verkaufspreis, Gewinnmarge und kurzer Beschreibung. Formatiere es übersichtlich.')">📋 Kompletter Shop-Plan</div>
+        <div class="chip" onclick="ask('shop','Welche 10 Dropshipping-Produkte haben 2026 die höchste Nachfrage und beste Marge? Mit AliExpress-Einkaufspreis und empfohlenem Verkaufspreis. Recherchiere aktuell.')">🔥 Trend-Produkte 2026</div>
+        <div class="chip" onclick="ask('shop','Schreib mir 3 fertige Produktbeschreibungen für [Produkt deiner Wahl] – verkaufsstark, SEO-optimiert, auf Deutsch. Inkl. Titel, Bullet-Points und Haupttext.')">✍️ Produkttexte</div>
+        <div class="chip" onclick="ask('shop','Erkläre mir Schritt für Schritt wie ich meinen ersten Dropshipping-Bestellung über AliExpress/CJ Dropshipping abwickle – vom Kundenauftrag bis zur Lieferung.')">📦 Erste Bestellung</div>
+        <div class="chip" onclick="ask('shop','Erstelle mir eine komplette Facebook/Instagram-Werbeanzeige für ein Dropshipping-Produkt: Headline, Text, Call-to-Action, Zielgruppe und Budget-Empfehlung.')">📣 Werbeanzeige</div>
+        <div class="chip" onclick="ask('shop','Analysiere die Top-3 Konkurrenten in meiner Nische: Was verkaufen sie, zu welchen Preisen, was machen sie gut, was schlechter? Gib mir dann 3 konkrete Tipps wie ich mich abheben kann. Nutze Web-Suche für aktuelle Daten.')">🔍 Konkurrenz analysieren</div>
+        <div class="chip" onclick="ask('shop','Erstelle mir alle wichtigen rechtlichen Texte für meinen deutschen Shopify-Shop auf Schweizer/Deutschen Recht: 1) Impressum-Vorlage 2) AGB-Vorlage 3) Datenschutzerklärung-Vorlage 4) Widerrufsrecht. Alles fertig zum Einfügen.')">⚖️ AGB &amp; Impressum</div>
+        <div class="chip" onclick="ask('shop','Erstelle mir 5 fertige E-Mail-Vorlagen für meinen Shop auf Deutsch: 1) Bestellbestätigung 2) Versandbestätigung mit Tracking 3) Antwort auf Lieferverzögerung 4) Antwort auf Rückgabewunsch 5) Bewertungs-Anfrage. Professionell und freundlich.')">📧 E-Mail Vorlagen</div>
+        <div class="chip" onclick="ask('shop','Recherchiere jetzt AKTIV 5 profitable Winning-Produkte für Dropshipping 2026: Nutze dein Wissen über AliExpress-Trends, TikTok-Viralprodukte und Google-Trends. Pro Produkt: Produktname, warum es gerade viral geht, Einkaufspreis AliExpress, empfohlener Verkaufspreis, Marge, Lieferant-Link-Hinweis, Zielgruppe. Wähle Produkte mit mindestens 40% Marge.')">🤖 Winning-Produkte finden</div>
+        <div class="chip" onclick="ask('shop','Führe mich Schritt für Schritt durch den kompletten Shopify-Shop-Aufbau: 1) Konto erstellen 2) Theme auswählen (welches empfiehlst du gratis?) 3) Seiten einrichten (Startseite, Über uns, Kontakt) 4) Zahlungsmethoden (Stripe, PayPal) 5) Versandeinstellungen für Schweiz/Deutschland 6) Erste Produkte anlegen 7) Domain verbinden. Mit konkreten Klick-Anweisungen.')">🏪 Shop aufbauen (Anleitung)</div>
+        <div class="chip" onclick="ask('shop','Finde mir die 3 besten Lieferanten für [mein Produkt/meine Nische] – vergleiche: AliExpress, CJ Dropshipping, Spocket, Zendrop. Kriterien: Lieferzeit nach CH/DE, Qualität, Preis, Retourenabwicklung. Empfehle den Besten mit Begründung.')">🚚 Lieferanten vergleichen</div>
+        <div class="chip" onclick="ask('shop','Erstelle mir eine komplette Preis-Kalkulation für mein Dropshipping-Produkt: Einkaufspreis + Shopify-Gebühr (2%) + Zahlungsgebühr PayPal (2.9%+0.30€) + Werbekosten geschätzt + Versand = break-even. Dann zeig mir bei welchem Verkaufspreis ich 30%, 40% und 50% Nettomarge erreiche. Als Tabelle.')">💸 Preis-Kalkulation</div>
+        <div class="chip" onclick="ask('shop','Erstelle mir einen kompletten 30-Tage Aktionsplan für meinen neuen Dropshipping-Shop: Woche 1 Shop-Setup, Woche 2 erste Produkte & Content, Woche 3 erste Werbeanzeigen schalten, Woche 4 optimieren. Pro Tag eine konkrete Aufgabe. Realistisch für jemanden der nebenbei arbeitet.')">📅 30-Tage Startplan</div>
       </div>
+      <div id="shopPlanBox" style="display:none;margin:0 16px 12px;"></div>
       <div class="bar">
         <button class="btn mic" data-mic onclick="toggleMic('shop')">🎤</button>
-        <input data-input placeholder="Frag nach deinem Shop…" onkeydown="if(event.key==='Enter')send('shop')">
+        <input data-input placeholder="Frag Jarvis alles zum Shop…" onkeydown="if(event.key==='Enter')send('shop')">
         <button class="btn sendb" onclick="send('shop')">➤</button>
       </div>
     </div>
@@ -735,6 +762,7 @@ const sfxSend    = ()=>{ beep(660, 990, 0.10, 'triangle', 0.05); };
 const sfxReceive = ()=>{ beep(880, 560, 0.14, 'sine', 0.05); };
 const sfxSwitch  = ()=>{ beep(440, 760, 0.08, 'sine', 0.04); };
 const sfxListen  = ()=>{ beep(520, 880, 0.12, 'sine', 0.05); };
+const sfxWake    = ()=>{ beep(660,1320,0.12,'sine',0.07); setTimeout(()=>beep(880,1760,0.10,'sine',0.06),100); };
 
 // Eigener Gesprächsverlauf pro Bereich → bleibt aufgeräumt
 const histories = { chat: [], trading: [], money: [], shop: [] };
@@ -744,7 +772,7 @@ const PROMPTS = {
   chat: BASE + ` Du hilfst bei allem im Alltag: Rezepte, Planung, Fragen, Ideen. Wenn Kamil Musik/Videos hören oder eine Webseite öffnen will, gib ihm einen anklickbaren Markdown-Link zum Starten, z.B. [▶️ Auf YouTube abspielen](https://www.youtube.com/results?search_query=SUCHE) oder [🎵 Auf Spotify](https://open.spotify.com/search/SUCHE) – ersetze SUCHE durch den Wunsch (Leerzeichen mit + bzw. %20). Bei „öffne X" gib den passenden Link der Seite.`,
   trading: BASE + ` Fokus: Börse & Trading. Nenne konkrete Aktien/Coins mit aktuellen Kursen (nutze die Web-Suche für Live-Daten!) und eine klare Einschätzung. Gib Einstiegs- und Stop-Loss-Ideen. Risiko nur in EINEM kurzen Satz am Ende. Keine ausweichende "frag-einen-Berater"-Predigt.`,
   money: BASE + ` Fokus: Geld verdienen. Sei direkt, versiert und konkret. Liefere fertige PLÄNE und Schritt-für-Schritt-Anleitungen mit echten Zahlen: Aufwand, möglicher Verdienst (pro Tag/Woche) und der allererste Schritt, den Kamil HEUTE machen kann. Nutze die Web-Suche für aktuelle Möglichkeiten. KEINE entmutigenden Floskeln wie "online kann man nicht einfach Geld verdienen" – zeig stattdessen genau WIE es geht. Denke breit: Skills/Dienstleistungen verkaufen, Flipping, Online-Gigs, lokale Jobs, kleine Geschäftsideen.`,
-  shop: BASE + ` Fokus: Dropshipping & Online-Shop. Sei proaktiv: schlage fertige Shop-Konzepte vor (Name, Nische, Produkte, Texte) und biete an, sie auszubauen. Nutze die Web-Suche für aktuelle Trend-Produkte.`
+  shop: BASE + ` Du bist Kamils persönlicher Dropshipping-Experte. Dein Ziel: ihm helfen, schnell einen profitablen Online-Shop aufzubauen. Regeln: 1) Immer konkret – echte Produktnamen, echte Preise, echte Margen. 2) Formatiere Produkte als Tabelle oder klare Liste. 3) Nutze Web-Suche für aktuelle Trends, AliExpress-Preise und Wettbewerb. 4) Schlage immer nächste Schritte vor. 5) Wenn Kamil eine Nische nennt: erstelle sofort einen kompletten Shop-Plan mit 5-8 Produkten, Einkaufspreis, Verkaufspreis, Marge in % und Lieferant (AliExpress/CJ/Spocket). 6) Schreibe Produkttexte verkaufsstark und auf Deutsch. 7) Kenne die Shopify-Plattform gut – gib konkrete Setup-Tipps.`
 };
 // Erklär-Stile pro Bereich
 const levels = { trading:'normal', money:'normal' };
@@ -1030,7 +1058,8 @@ function micVisual(on){
 }
 function startRecog(){
   if(!recog) return;
-  if(recogState!=='idle') return;        // läuft schon → nicht doppelt starten (verhindert das Hängen)
+  if(recogState!=='idle') return;
+  stopWakeRecog();                        // Wake-Erkennung pausieren wenn Hauptmikro startet
   recogState='starting';
   try{
     recog.start();
@@ -1045,7 +1074,45 @@ function startRecog(){
   }
 }
 let micWanted=false;
-function resumeAfter(){ busy=false; if(liveMode){ setTimeout(startRecog,300); } }
+function resumeAfter(){ busy=false; if(liveMode){ setTimeout(startRecog,300); } else if(wakeMode && !IS_IOS){ setTimeout(startWakeRecog,500); } }
+
+// ---- Wake-Word "Hey Jarvis" ----
+// Nutzt liveMode (eine SR-Instanz), filtert auf "Jarvis" bis aktiviert
+let wakeMode = localStorage.getItem('jarvis_wakemode')==='1';
+let wakeActivated = false, wakeTimer = null;
+const WAKE_WORDS = ['jarvis','jarves','jarwis','jarbi','chavis','harvest'];
+
+function wakeActivate(){
+  sfxWake();
+  wakeActivated = true;
+  clearTimeout(wakeTimer);
+  // Nach 12 Sek ohne Befehl wieder auf Wake-Word warten
+  wakeTimer = setTimeout(()=>{ wakeActivated=false; }, 12000);
+}
+function stopWakeRecog(){ /* kein eigener Prozess mehr – liveMode übernimmt */ }
+function startWakeRecog(){ /* kein eigener Prozess mehr – liveMode übernimmt */ }
+function updateWakeBtn(){
+  const b=el('#wakeBtn'); if(!b) return;
+  b.classList.toggle('wake-on',wakeMode);
+  b.textContent = wakeMode ? '⚡ Wake: AN' : '⚡ Wake-Word';
+}
+function toggleWake(){
+  if(!SR){ addMsg('chat','⚡ Wake-Word braucht Chrome oder Edge.','jarvis'); switchView('chat'); return; }
+  wakeMode=!wakeMode; localStorage.setItem('jarvis_wakemode',wakeMode?'1':'0');
+  wakeActivated=false; clearTimeout(wakeTimer);
+  updateWakeBtn();
+  if(wakeMode){
+    // liveMode einschalten – von dort aus filtern wir
+    if(!liveMode){ liveMode=true; speakOn=true; busy=false; updateLiveBtn(); setTimeout(startRecog,300); }
+    addMsg('chat','⚡ **Wake-Word ist an.** Sag einfach „Jarvis" – ich höre durchgehend zu und aktiviere mich sofort.','jarvis');
+    switchView('chat');
+  } else {
+    // liveMode abschalten
+    if(liveMode){ liveMode=false; try{recog.stop();}catch(_){} updateLiveBtn(); }
+    addMsg('chat','⚡ Wake-Word ist aus.','jarvis');
+    switchView('chat');
+  }
+}
 
 // iPhone/iPad erkennen – dort ist die Browser-Spracherkennung gesperrt/unzuverlässig
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -1093,8 +1160,25 @@ function say(text){ addMsg(currentView, text, 'jarvis'); speak(text); }
 // Zentrale Sprach-Auswertung: Befehl oder Frage?
 function handleVoice(txt){
   if(!txt){ resumeAfter(); return; }
-  busy=true;
   const low = txt.toLowerCase();
+
+  // Wake-Word-Filter: wenn Wake-Mode an und noch nicht aktiviert → nur auf "Jarvis" reagieren
+  if(wakeMode && !wakeActivated){
+    if(WAKE_WORDS.some(w=>low.includes(w))){
+      wakeActivate();
+      // Rest des Satzes nach "jarvis" als Befehl nutzen falls vorhanden
+      const afterWake = low.replace(/\b(hey\s+)?(jarvis|jarves|jarwis|jarbi|chavis|harvest)\b/i,'').trim();
+      if(afterWake.length > 2){
+        // Direkt weiterverarbeiten mit dem Rest
+      } else {
+        speak('Ja, ich bin da.'); resumeAfter(); return;
+      }
+    } else {
+      resumeAfter(); return; // Kein Wake-Word → ignorieren, weiter zuhören
+    }
+  }
+
+  busy=true;
 
   // Quiz: läuft eine Frage? → Antwort zuerst prüfen (vor allen anderen Befehlen)
   if(quizPending){ checkQuizAnswer(txt); busy=false; return; }
@@ -2479,6 +2563,110 @@ function renderCamCard(){
   refreshCams();
 }
 function renderDash(){ renderCalendar(); renderAlerts(); renderClimateCard(); renderCamCard(); }
+
+// ---- Dropshipping ----
+let shopifyKey = localStorage.getItem('jarvis_shopify_key')||'';
+let shopifyStore = localStorage.getItem('jarvis_shopify_store')||''; // z.B. mein-shop.myshopify.com
+let shopPlan = null; // aktueller generierter Shop-Plan (für Shopify-Push)
+
+function shopNischeFinds(){
+  switchView('shop');
+  ask('shop','Zeig mir 6 profitable Dropshipping-Nischen für 2026 – jede mit: Nischen-Name, Warum jetzt gut, Zielgruppe, Beispielprodukt, Einkaufspreis ca., Verkaufspreis ca., Marge in %. Formatiere es als übersichtliche Liste. Frag mich danach, welche mir gefällt, damit wir den kompletten Shop-Plan erstellen.');
+}
+
+async function shopBuildWebsite(){
+  switchView('shop');
+  const nische = prompt('Für welche Nische soll der Webshop sein?\n(z.B. Motorrad-Zubehör, Fitness, Auto-Tuning…)');
+  if(!nische) return;
+  const shopName = prompt('Wie soll der Shop heißen? (oder leer lassen → Jarvis wählt)') || '';
+  addMsg('shop','🌐 Generiere deinen kompletten Webshop für **'+nische+'**… Das dauert einen Moment.','jarvis');
+
+  const prompt2 = `Erstelle eine VOLLSTÄNDIGE, fertige HTML-Datei für einen professionellen Dropshipping-Webshop.
+Nische: ${nische}
+Shop-Name: ${shopName || 'du wählst einen passenden Namen'}
+
+WICHTIG: Gib NUR den HTML-Code zurück, ohne Erklärungen davor oder danach. Starte direkt mit <!DOCTYPE html>.
+
+Der Shop soll enthalten:
+- Modernes, dunkles Design (ähnlich wie Premium-Shops)
+- Header mit Logo/Name und Navigation
+- Hero-Banner mit Slogan und Call-to-Action Button
+- 6 Produkte als Karten (mit Produktname, Bild-Platzhalter, Kurzbeschreibung, Preis, "In den Warenkorb" Button)
+- Einfacher Warenkorb (JavaScript, kein Server nötig)
+- Footer mit Kontakt, Links
+- Komplett auf Deutsch
+- Mobile-responsive (Flexbox/Grid)
+- Alles in EINER Datei (kein externes CSS/JS außer Google Fonts)`;
+
+  const key = localStorage.getItem('jarvis_key');
+  if(!key){ addMsg('shop','⚠️ Bitte zuerst deinen Claude API Key in den Einstellungen eingeben.','jarvis'); return; }
+
+  try{
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:prompt2}]})
+    });
+    const d = await r.json();
+    let html = d.content?.[0]?.text || '';
+    // HTML-Block aus Markdown rausschneiden falls vorhanden
+    const match = html.match(/```html\s*([\s\S]*?)```/i) || html.match(/```\s*([\s\S]*?)```/);
+    if(match) html = match[1].trim();
+    if(!html.includes('<!DOCTYPE') && !html.includes('<html')){ addMsg('shop','⚠️ Jarvis konnte keinen vollständigen Shop generieren. Versuch es nochmal.','jarvis'); return; }
+
+    // Als Datei speichern (Download)
+    const blob = new Blob([html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = (shopName||nische).replace(/\s+/g,'-').toLowerCase()+'-shop.html';
+    a.click(); URL.revokeObjectURL(url);
+
+    addMsg('shop','✅ **Webshop fertig!** Die Datei wurde heruntergeladen → einfach doppelklicken und öffnen.\n\nNächste Schritte:\n- Produktbilder ergänzen\n- Preise anpassen\n- Auf GitHub Pages oder Shopify hochladen\n\nSoll ich dir noch Produkttexte oder eine Werbeanzeige dafür erstellen?','jarvis');
+  }catch(e){ addMsg('shop','❌ Fehler beim Generieren: '+e.message,'jarvis'); }
+}
+
+function openShopifySetup(){
+  const key = prompt('Shopify Admin API Key (findest du in deinem Shopify-Backend unter Einstellungen → Apps → Private Apps):\n\nLass leer zum Abbrechen.');
+  if(key===null) return;
+  const store = prompt('Dein Shopify Shop-URL (Format: mein-shop.myshopify.com):');
+  if(!store) return;
+  shopifyKey = key.trim(); shopifyStore = store.trim();
+  localStorage.setItem('jarvis_shopify_key', shopifyKey);
+  localStorage.setItem('jarvis_shopify_store', shopifyStore);
+  updateShopifyBar();
+  addMsg('shop','✅ Shopify verbunden! Mit **⬆️ Produkte zu Shopify** lädst du deinen Shop-Plan direkt hoch.','jarvis');
+}
+
+function updateShopifyBar(){
+  const status = el('#shopifyStatus');
+  const pushBtn = el('#shopifyPushBtn');
+  if(!status) return;
+  if(shopifyKey && shopifyStore){
+    status.style.borderColor='rgba(62,224,122,0.4)';
+    status.style.background='rgba(62,224,122,0.08)';
+    status.style.color='var(--green)';
+    status.textContent='✅ Shopify: '+shopifyStore;
+    if(pushBtn) pushBtn.style.display='block';
+  }
+}
+
+async function shopifyPushProducts(){
+  if(!shopifyKey || !shopifyStore){ openShopifySetup(); return; }
+  if(!shopPlan || !shopPlan.length){ addMsg('shop','⚠️ Noch kein Shop-Plan vorhanden. Erstelle zuerst einen kompletten Shop-Plan mit dem Button oben.','jarvis'); return; }
+  addMsg('shop','⬆️ Lade '+shopPlan.length+' Produkte zu Shopify hoch…','jarvis');
+  let ok=0, fail=0;
+  for(const p of shopPlan){
+    try{
+      const res = await fetch('https://'+shopifyStore+'/admin/api/2024-01/products.json',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Shopify-Access-Token':shopifyKey},
+        body:JSON.stringify({product:{title:p.title,body_html:p.description,variants:[{price:String(p.price)}]}})
+      });
+      if(res.ok) ok++; else fail++;
+    }catch(_){ fail++; }
+  }
+  addMsg('shop','✅ Fertig! **'+ok+' Produkte** hochgeladen'+( fail?', '+fail+' fehlgeschlagen':'')+'.\n\nGeh in dein Shopify-Backend und füge noch Bilder hinzu.','jarvis');
+}
 function clearDoneTasks(){ tasks = tasks.filter(t=>!t.done); saveTasks(); renderTasks(); }
 function addTask(){
   const text = prompt('Aufgabe oder Rechnung:'); if(!text) return;
@@ -2561,6 +2749,8 @@ setInterval(renderAlerts, 60*1000);     // Meldungen aktuell halten (Timer/Lampe
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
 if(haToken) haLoad();          // Home-Assistant-Geräte laden
+updateWakeBtn(); updateShopifyBar();
+if(wakeMode && SR && !IS_IOS){ liveMode=true; speakOn=true; updateLiveBtn(); setTimeout(startRecog,1500); }
 setInterval(refreshCams, 4000);   // Kamera-Live-Bilder aktualisieren
 const _h = new Date().getHours();
 const _gruss = _h<5?'Gute Nacht':_h<11?'Guten Morgen':_h<18?'Hallo':_h<22?'Guten Abend':'Schönen späten Abend';
