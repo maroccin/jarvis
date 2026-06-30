@@ -2688,20 +2688,15 @@ async function agentMode(){
 
   addMsg('chat', '🤖 **Agent gestartet:** '+goal+'\n\n*Plane Aufgaben…*', 'jarvis');
 
-  async function callClaude(prompt, maxTokens=2000){
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6', max_tokens:maxTokens,
-        messages:[{role:'user',content:prompt}]})
-    });
-    const d = await r.json();
+  async function agentCallClaude(prompt, maxTokens=2000){
+    const d = await callClaude({model:'claude-sonnet-4-6', max_tokens:maxTokens,
+      messages:[{role:'user',content:prompt}]});
     return d.content?.[0]?.text || '';
   }
 
   try{
     // Schritt 1: Plan erstellen
-    const plan = await callClaude(
+    const plan = await agentCallClaude(
       `Du bist ein KI-Agent. Zerlege diese Aufgabe in genau 3-4 konkrete Schritte:\n"${goal}"\n\nAntworte NUR mit einer nummerierten Liste, ein Schritt pro Zeile, keine Erklärungen davor oder danach. Maximal 8 Wörter pro Schritt.`, 300
     );
     const steps = plan.split('\n').filter(l=>l.match(/^\d/)).map(l=>l.replace(/^\d+[\.\)]\s*/,'').trim()).filter(Boolean);
@@ -2718,7 +2713,7 @@ async function agentMode(){
     for(let i=0; i<steps.length; i++){
       const step = steps[i];
       addMsg('chat', `⚙️ **Schritt ${i+1}/${steps.length}:** ${step}`, 'jarvis');
-      const result = await callClaude(
+      const result = await agentCallClaude(
         `${context}Führe jetzt diesen Schritt aus: "${step}"\n\nGib ein konkretes, vollständiges Ergebnis. Sei präzise und praxisnah.`, 1500
       );
       const stepMsgs = document.querySelectorAll('#chat-chat .msg.jarvis');
@@ -2746,13 +2741,8 @@ async function analyzeDoc(input){
     let content=e.target.result;
     if(content.length>30000) content=content.slice(0,30000)+'…[gekürzt]';
     try{
-      const r=await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1500,
-          messages:[{role:'user',content:`Datei: "${file.name}"\n\nInhalt:\n${content}\n\n---\n${question}`}]})
-      });
-      const d=await r.json();
+      const d=await callClaude({model:'claude-sonnet-4-6',max_tokens:1500,
+        messages:[{role:'user',content:`Datei: "${file.name}"\n\nInhalt:\n${content}\n\n---\n${question}`}]});
       const txt=d.content?.[0]?.text||'Keine Antwort.';
       const msgs=document.querySelectorAll('#chat-chat .msg.jarvis');
       if(msgs.length) msgs[msgs.length-1].lastElementChild.innerHTML=formatText(txt);
@@ -2778,18 +2768,13 @@ async function analyzeImage(input){
     const b64 = e.target.result.split(',')[1];
     const mime = file.type || 'image/jpeg';
     try{
-      const r = await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body:JSON.stringify({
-          model:'claude-sonnet-4-6', max_tokens:1024,
-          messages:[{role:'user',content:[
-            {type:'image',source:{type:'base64',media_type:mime,data:b64}},
-            {type:'text',text:question}
-          ]}]
-        })
+      const d = await callClaude({
+        model:'claude-sonnet-4-6', max_tokens:1024,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+          {type:'text',text:question}
+        ]}]
       });
-      const d = await r.json();
       const txt = d.content?.[0]?.text || 'Keine Antwort erhalten.';
       // Letzte "analysiere…" Nachricht ersetzen
       const msgs = document.querySelectorAll('#chat-chat .msg.jarvis');
@@ -2830,16 +2815,10 @@ Der Shop soll enthalten:
 - Mobile-responsive (Flexbox/Grid)
 - Alles in EINER Datei (kein externes CSS/JS außer Google Fonts)`;
 
-  const key = localStorage.getItem('jarvis_key');
-  if(!key){ addMsg('shop','⚠️ Bitte zuerst deinen Claude API Key in den Einstellungen eingeben.','jarvis'); return; }
+  if(!apiKey){ addMsg('shop','⚠️ Bitte zuerst deinen Claude API Key in den Einstellungen eingeben.','jarvis'); return; }
 
   try{
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:prompt2}]})
-    });
-    const d = await r.json();
+    const d = await callClaude({model:'claude-sonnet-4-6',max_tokens:8000,messages:[{role:'user',content:prompt2}]});
     let html = d.content?.[0]?.text || '';
     // HTML-Block aus Markdown rausschneiden falls vorhanden
     const match = html.match(/```html\s*([\s\S]*?)```/i) || html.match(/```\s*([\s\S]*?)```/);
