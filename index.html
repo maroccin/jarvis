@@ -534,6 +534,15 @@
   <video id="faceVideo" autoplay muted playsinline style="display:none;position:fixed;bottom:80px;right:16px;width:120px;height:90px;border-radius:10px;border:1px solid var(--border);z-index:800;object-fit:cover;opacity:0.7;"></video>
   <canvas id="faceCanvas" style="display:none;"></canvas>
 
+  <!-- Sperr-Overlay -->
+  <div id="faceLockOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.92);display:none;flex-direction:column;align-items:center;justify-content:center;gap:20px;">
+    <div style="font-size:64px;">🔒</div>
+    <div style="font-size:22px;font-weight:700;color:#fff;">Zugang verweigert</div>
+    <div style="font-size:14px;color:#aaa;">Unbekanntes Gesicht erkannt.</div>
+    <div style="font-size:13px;color:#666;margin-top:8px;">Kamil, schau in die Kamera um zu entsperren.</div>
+    <button onclick="faceLockOverlayUnlock()" style="margin-top:16px;padding:12px 28px;border-radius:10px;border:none;background:var(--accent);color:#000;font-size:15px;font-weight:700;cursor:pointer;">Entsperren versuchen</button>
+  </div>
+
   <!-- Spotify Mini-Player -->
   <div id="spPlayer" style="display:none;position:fixed;bottom:16px;right:16px;z-index:900;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 14px;min-width:220px;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,.4);">
     <div style="display:flex;align-items:center;gap:10px;">
@@ -820,13 +829,19 @@
       <div id="spStatus" style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.4;"></div>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
-      <h2 style="font-size:16px;">👤 Gesichtserkennung</h2>
-      <p>Jarvis begrüsst dich automatisch, wenn er dein Gesicht erkennt. Kamera bleibt im Hintergrund.</p>
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+      <h2 style="font-size:16px;">👤 Gesichtserkennung & Sperre</h2>
+      <p>Jarvis erkennt <b>dich</b> und begrüsst dich mit Namen. Fremde Gesichter werden gesperrt.</p>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px;">
         <input type="checkbox" id="faceOnInput" style="width:18px;height:18px;">
         Gesichtserkennung aktivieren
       </label>
-      <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;"></div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px;">
+        <input type="checkbox" id="faceLockInput" style="width:18px;height:18px;">
+        Fremde Gesichter sperren (Zugang verweigern)
+      </label>
+      <button class="save" style="width:100%;margin-top:4px;" onclick="faceLearn()">📸 Mein Gesicht einlernen</button>
+      <button class="close" style="width:100%;margin-top:8px;" onclick="faceClearProfile()">🗑️ Gesichtsprofil löschen</button>
+      <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
 
       <div class="row">
         <button class="save" onclick="saveSettings()">Speichern</button>
@@ -2500,7 +2515,9 @@ function openSettings(){
   if(el('#spStatus')) el('#spStatus').textContent = spToken ? '✅ Verbunden' : (spClientId ? '⚠️ Noch nicht autorisiert – auf „Verbinden" klicken' : '');
   if(el('spRedirectUri')) el('spRedirectUri').textContent = location.origin + location.pathname;
   if(el('#faceOnInput')) el('#faceOnInput').checked = faceOn;
-  if(el('faceStatus')) el('faceStatus').textContent = faceOn ? (faceDetecting ? '✅ Aktiv – Kamera läuft' : '⏳ Wird gestartet…') : '';
+  if(el('#faceLockInput')) el('#faceLockInput').checked = faceLock;
+  const hasProfile = !!localStorage.getItem('jarvis_face_desc');
+  if(el('faceStatus')) el('faceStatus').textContent = faceOn ? (faceDetecting ? '✅ Aktiv' : '⏳ Wird gestartet…') + (hasProfile?' · Profil vorhanden':' · ⚠️ Noch kein Gesicht eingelernt') : (hasProfile?'Profil vorhanden':'');
   el('#voiceModeInput').value=voiceMode;
   el('#ytKeyInput').value=ytKey;
   renderMem();
@@ -2532,72 +2549,147 @@ function importSettings(input){
   };
   reader.readAsText(file);
 }
-// ---- Gesichtserkennung ----
-let faceOn = localStorage.getItem('jarvis_face') === 'true';
-let faceGreeted = false;
-let faceStream = null;
-let faceLoaded = false;
-let faceDetecting = false;
+// ---- Gesichtserkennung & Sperre ----
+let faceOn       = localStorage.getItem('jarvis_face') === 'true';
+let faceLock     = localStorage.getItem('jarvis_face_lock') === 'true';
+let faceGreeted  = false;
+let faceLocked   = false;
+let faceStream   = null;
+let faceLoaded   = false;
+let faceDetecting= false;
+let faceUnknownCount = 0;
+const FACE_BASE  = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
 
 async function loadFaceModels(){
   if(faceLoaded) return true;
   try{
-    const base = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
-    await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(FACE_BASE),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(FACE_BASE),
+      faceapi.nets.faceRecognitionNet.loadFromUri(FACE_BASE)
+    ]);
     faceLoaded = true;
     return true;
   }catch(e){ return false; }
 }
 
+function faceSetStatus(msg){ const d=el('faceStatus'); if(d) d.textContent=msg; }
+
+async function faceLearn(){
+  faceSetStatus('⏳ Modelle laden…');
+  const ok = await loadFaceModels();
+  if(!ok){ faceSetStatus('❌ Modelle konnten nicht geladen werden.'); return; }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
+    const vid = el('faceVideo'); vid.srcObject = stream; vid.style.display='block';
+    faceSetStatus('📸 Schau in die Kamera… (3 Sekunden)');
+    await new Promise(r=>setTimeout(r,3000));
+    const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
+      .withFaceLandmarks(true).withFaceDescriptor();
+    stream.getTracks().forEach(t=>t.stop()); vid.style.display='none';
+    if(!det){ faceSetStatus('❌ Kein Gesicht erkannt. Nochmal versuchen.'); return; }
+    const desc = Array.from(det.descriptor);
+    localStorage.setItem('jarvis_face_desc', JSON.stringify(desc));
+    faceSetStatus('✅ Gesicht eingespeichert! Gesichtserkennung aktivieren und speichern.');
+  }catch(e){ faceSetStatus('❌ Kamera-Fehler: '+e.message); }
+}
+
+function faceClearProfile(){
+  localStorage.removeItem('jarvis_face_desc');
+  faceSetStatus('🗑️ Gesichtsprofil gelöscht.');
+}
+
+function faceGetDescriptor(){
+  const s = localStorage.getItem('jarvis_face_desc');
+  return s ? new Float32Array(JSON.parse(s)) : null;
+}
+
+function faceLockOverlayShow(){ el('faceLockOverlay').style.display='flex'; faceLocked=true; }
+function faceLockOverlayHide(){ el('faceLockOverlay').style.display='none'; faceLocked=false; faceUnknownCount=0; }
+async function faceLockOverlayUnlock(){
+  // Erneut scannen ob Kamil jetzt da ist
+  const vid = el('faceVideo');
+  const saved = faceGetDescriptor();
+  if(!saved){ faceLockOverlayHide(); return; }
+  const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
+    .withFaceLandmarks(true).withFaceDescriptor();
+  if(det){
+    const dist = faceapi.euclideanDistance(saved, det.descriptor);
+    if(dist < 0.5){ faceLockOverlayHide(); faceDoGreet(); }
+    else { el('faceLockOverlay').querySelector('div:nth-child(4)').textContent='Nicht erkannt. Nochmal versuchen.'; }
+  } else {
+    el('faceLockOverlay').querySelector('div:nth-child(4)').textContent='Kein Gesicht erkannt – nochmal versuchen.';
+  }
+}
+
+function faceDoGreet(){
+  if(faceGreeted) return;
+  faceGreeted = true;
+  const h = new Date().getHours();
+  const tod = h<12?'Guten Morgen':h<18?'Guten Tag':'Guten Abend';
+  const greetings = [
+    tod+', Kamil! Schön, dich zu sehen.',
+    'Hey Kamil! Ich bin bereit – was kann ich für dich tun?',
+    tod+', Kamil! Was steht heute an?',
+    'Da bist du ja, Kamil! Wie kann ich helfen?'
+  ];
+  const msg = greetings[Math.floor(Math.random()*greetings.length)];
+  addMsg('chat', msg, 'jarvis');
+  speak(msg);
+  switchView('chat');
+  setTimeout(()=>{ faceGreeted=false; }, 30*60*1000);
+}
+
 async function startFaceDetection(){
   if(!faceOn || faceDetecting) return;
-  const statusEl = el('faceStatus');
-  if(statusEl) statusEl.textContent = '⏳ Lade Modell…';
+  faceSetStatus('⏳ Lade Erkennungsmodelle…');
   const ok = await loadFaceModels();
-  if(!ok){
-    if(statusEl) statusEl.textContent = '❌ Modell konnte nicht geladen werden.';
-    return;
-  }
+  if(!ok){ faceSetStatus('❌ Modelle konnten nicht geladen werden.'); return; }
   try{
-    faceStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:'user', width:320, height:240 } });
-    const vid = el('faceVideo');
-    vid.srcObject = faceStream;
+    faceStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:320,height:240}});
+    const vid = el('faceVideo'); vid.srcObject = faceStream;
     faceDetecting = true;
-    if(statusEl) statusEl.textContent = '✅ Aktiv – Kamera läuft';
+    faceSetStatus('✅ Aktiv');
     faceDetectLoop();
-  }catch(e){
-    if(statusEl) statusEl.textContent = '❌ Kamera-Zugriff verweigert.';
-  }
+  }catch(e){ faceSetStatus('❌ Kamera-Zugriff verweigert.'); }
 }
 
 async function faceDetectLoop(){
   if(!faceOn || !faceDetecting) return;
   const vid = el('faceVideo');
   if(vid.readyState >= 2){
-    const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.5 }));
-    if(det && !faceGreeted){
-      faceGreeted = true;
-      const greetings = [
-        'Willkommen zurück, Kamil! Schön, dich zu sehen. 😊',
-        'Hey Kamil! Ich bin bereit. Was kann ich für dich tun?',
-        'Guten Tag, Kamil! Was steht heute an?',
-        'Da bist du ja, Kamil! Wie kann ich helfen?'
-      ];
-      const msg = greetings[Math.floor(Math.random()*greetings.length)];
-      addMsg('chat', msg, 'jarvis');
-      speak(msg.replace(/[😊]/g,''));
-      switchView('chat');
-      // Nach 30 Min wieder grüssen erlauben
-      setTimeout(()=>{ faceGreeted = false; }, 30*60*1000);
+    const saved = faceGetDescriptor();
+    if(saved){
+      // Echte Erkennung: nur Kamil erlaubt
+      const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}))
+        .withFaceLandmarks(true).withFaceDescriptor();
+      if(det){
+        const dist = faceapi.euclideanDistance(saved, det.descriptor);
+        if(dist < 0.5){
+          // Es ist Kamil
+          faceUnknownCount = 0;
+          if(faceLocked) faceLockOverlayHide();
+          faceDoGreet();
+        } else if(faceLock && !faceLocked){
+          // Fremdes Gesicht
+          faceUnknownCount++;
+          if(faceUnknownCount >= 2) faceLockOverlayShow();
+        }
+      } else { faceUnknownCount = 0; }
+    } else {
+      // Kein Profil gespeichert – nur erkennen ob jemand da ist
+      const det = await faceapi.detectSingleFace(vid, new faceapi.TinyFaceDetectorOptions({scoreThreshold:0.5}));
+      if(det) faceDoGreet();
     }
   }
-  setTimeout(faceDetectLoop, 1500);
+  setTimeout(faceDetectLoop, 2000);
 }
 
 function stopFaceDetection(){
   faceDetecting = false;
   if(faceStream){ faceStream.getTracks().forEach(t=>t.stop()); faceStream=null; }
-  const vid = el('faceVideo'); if(vid) vid.srcObject = null;
+  const vid = el('faceVideo'); if(vid){ vid.srcObject=null; vid.style.display='none'; }
+  faceLockOverlayHide();
 }
 
 // ---- Spotify Integration (PKCE OAuth + Web API) ----
@@ -2804,6 +2896,8 @@ function saveSettings(){
   haUrl = el('#haUrl').value.trim().replace(/\/$/,'') || 'http://localhost:8123'; haToken = el('#haToken').value.trim();
   localStorage.setItem('ha_url', haUrl); localStorage.setItem('ha_token', haToken);
   const newFaceOn = el('#faceOnInput')?.checked || false;
+  faceLock = el('#faceLockInput')?.checked || false;
+  localStorage.setItem('jarvis_face_lock', faceLock);
   if(newFaceOn !== faceOn){
     faceOn = newFaceOn;
     localStorage.setItem('jarvis_face', faceOn);
