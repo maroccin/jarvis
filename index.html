@@ -2,6 +2,9 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
 <title>JARVIS</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -496,6 +499,8 @@
 </head>
 <body>
   <div id="bgglow"></div>
+  <!-- Versions-Anzeige (zum Prüfen ob neueste Version geladen ist) -->
+  <div id="verBadge" style="position:fixed;bottom:4px;left:6px;z-index:9998;font-size:10px;color:rgba(120,160,200,0.45);pointer-events:none;font-family:monospace;"></div>
   <!-- Boot-Startbildschirm -->
   <div id="boot">
     <div id="bootReactor"><span class="r3"></span></div>
@@ -3779,6 +3784,10 @@ function alarmTimer(){
 }
 
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
+
+// ---- Version (zum Prüfen ob neueste Version geladen ist) ----
+const JARVIS_VERSION = 'v2.4 · Turn-by-Turn Navi';
+(function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
 (function(){
