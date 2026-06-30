@@ -1125,6 +1125,23 @@ async function askClaude(view, userText){
 }
 
 async function respond(view, q){
+  // Lokale Befehle auch beim Tippen abfangen (nicht nur bei Sprache)
+  const low = q.toLowerCase().trim();
+  const song = matchPlayMusic(low, q);
+  if(song){ playMusic(song); return; }
+  const spCmd = matchSpotify(low, q);
+  if(spCmd){
+    if(spCmd.cmd==='pause') spotifyPause();
+    else if(spCmd.cmd==='resume') spotifyPlay(null);
+    else if(spCmd.cmd==='next') spotifyNext();
+    else if(spCmd.cmd==='prev') spotifyPrev();
+    else if(spCmd.cmd==='vol') spotifyVolume(spCmd.delta);
+    else if(spCmd.cmd==='nowplaying') spotifyNowPlaying();
+    else if(spCmd.cmd==='play') spotifyPlay(spCmd.q);
+    return;
+  }
+  const wxCity = matchWeatherCity(low);
+  if(wxCity){ doWeatherCity(wxCity); return; }
   if(!apiKey){
     addMsg(view, 'Ich brauche zuerst deinen Claude API Key. Klick links unten auf **⚙️ Einstellungen** und füg ihn ein. 🔑','jarvis');
     openSettings(); return;
