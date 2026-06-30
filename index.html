@@ -549,7 +549,8 @@
     <div style="display:flex;gap:8px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;">
       <input id="navInput" placeholder="Ziel eingeben (z.B. Zürich HB, Bäckerstrasse 10…)" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;" onkeydown="if(event.key==='Enter') navSearch()">
       <button onclick="navSearch()" style="padding:10px 18px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:700;cursor:pointer;font-size:15px;">🔍</button>
-      <button onclick="navLocate()" title="Mein Standort" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">📍</button>
+      <button onclick="navLocate()" title="Auf mich zentrieren / folgen" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">📍</button>
+      <button onclick="navOverview()" title="Ganze Route zeigen" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">🗺️</button>
     </div>
     <!-- Schnellziele -->
     <div id="navQuick" style="display:flex;gap:8px;padding:8px 14px;flex-shrink:0;flex-wrap:wrap;background:var(--card);border-bottom:1px solid var(--border);">
@@ -2672,6 +2673,7 @@ let navSteps = [];        // [{text, icon, loc:[lat,lon], dist}]
 let navStepIdx = 0;
 let navActive = false;
 let navWarned = {};        // pro Schritt: Vorwarnung bereits gesprochen?
+let navFollow = true;     // Karte folgt der eigenen Position (Fahransicht)
 
 function navInit(){
   if(navMap) return;
@@ -2733,6 +2735,8 @@ function navManeuver(step){
 // Live-Begleitung während der Fahrt
 function navGuidanceTick(){
   if(!navActive || !navSteps.length || !navUserPos) return;
+  // Karte folgt dir live (zentriert auf deine Position, nah herangezoomt)
+  if(navFollow && navMap){ navMap.setView(navUserPos, Math.max(navMap.getZoom(), 16), {animate:true}); }
   if(navStepIdx >= navSteps.length){ navStop(true); return; }
   const step = navSteps[navStepIdx];
   const d = navGeoDist(navUserPos, step.loc);
@@ -2798,8 +2802,14 @@ function navStop(arrived){
 
 function navLocate(){
   if(!navMap) navInit();
-  if(navUserPos){ navMap.setView(navUserPos, 16); }
+  navFollow = true;   // Folge-Modus wieder einschalten (Karte folgt dir)
+  if(navUserPos){ navMap.setView(navUserPos, 16, {animate:true}); }
   else { navigator.geolocation.getCurrentPosition(p=>{ navUserPos=[p.coords.latitude,p.coords.longitude]; navMap.setView(navUserPos,16); }); }
+}
+// Ganze Route zeigen (Übersicht) – schaltet Folge-Modus aus
+function navOverview(){
+  navFollow = false;
+  if(navMap && navRouteLine){ navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]}); }
 }
 
 async function navSearch(){
@@ -2832,7 +2842,6 @@ async function navRouteTo(destination){
         const route = rd.routes[0];
         if(navRouteLine) navMap.removeLayer(navRouteLine);
         navRouteLine = L.geoJSON(route.geometry,{style:{color:'#35c8ff',weight:5,opacity:0.8}}).addTo(navMap);
-        navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]});
         const dist = (route.distance/1000).toFixed(1);
         const mins = Math.round(route.duration/60);
         el('#navInfo').textContent = `🎯 ${destName} · ${dist} km · ca. ${mins} Min`;
@@ -2848,8 +2857,11 @@ async function navRouteTo(destination){
         navStepIdx = 0; navWarned = {};
         navRenderSteps();
         if(navSteps.length){
-          navActive = true;
+          navActive = true; navFollow = true;
           navBannerSet(navSteps[0].icon, '', navSteps[0].text);
+          // Fahransicht: kurz ganze Route zeigen, dann auf eigene Position zentrieren
+          navMap.fitBounds(navRouteLine.getBounds(),{padding:[30,30]});
+          setTimeout(()=>{ if(navActive && navFollow && navUserPos) navMap.setView(navUserPos, 16, {animate:true}); }, 1800);
           speak('Route nach '+destName+'. '+dist+' Kilometer, etwa '+mins+' Minuten. '+navSteps[0].text);
         }
         return;
@@ -3786,7 +3798,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v2.6 · Navi intern';
+const JARVIS_VERSION = 'v2.7 · Fahransicht (folgt dir)';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
