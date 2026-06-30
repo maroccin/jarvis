@@ -2966,7 +2966,9 @@ function navSaveLocation(key){
 // Sprachbefehl Navigation – robust: erkennt Auslöser am Satzanfang und
 // entfernt Füllwörter (mich/zu/nach/zum/…) vor dem eigentlichen Ziel.
 function matchNavCmd(low, txt){
-  const m = txt.match(/^\s*(?:navigiere?|navigation|navi|fahr(?:e)?\s+mich|fahr(?:e)?|bring\s+mich|route|zeig\s+(?:mir\s+)?(?:den\s+)?weg)\b[\s,:]*(.*)$/i);
+  // tippfehler-tolerant: alles was mit "navig…" anfängt (navigier, navigierr, navigiere, navigation),
+  // plus navi / fahr(e) mich / bring mich / route / zeig den weg
+  const m = txt.match(/^\s*(?:navig\w*|navi|fahr\w*\s+mich|fahr\w*|bring\s+mich|route|zeig\s+(?:mir\s+)?(?:den\s+)?weg)\b[\s,:]*(.*)$/i);
   if(!m) return null;
   let dest = (m[1]||'').trim();
   // führende Füllwörter wiederholt strippen ("mich nach", "zur", "in die" …)
@@ -3874,7 +3876,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.2 · 3D setPitch';
+const JARVIS_VERSION = 'v3.3 · Tippfehler-tolerant';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
