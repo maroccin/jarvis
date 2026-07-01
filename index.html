@@ -249,6 +249,8 @@
   #view-shop    { background: radial-gradient(820px 520px at 28% 6%, rgba(155,92,255,0.12), transparent 62%); }
   #view-research{ background: radial-gradient(820px 520px at 28% 6%, rgba(53,200,255,0.12), transparent 62%); }
   #view-marketing{ background: radial-gradient(820px 520px at 28% 6%, rgba(255,92,150,0.12), transparent 62%); }
+  #view-tasksagent{ background: radial-gradient(820px 520px at 28% 6%, rgba(62,224,122,0.12), transparent 62%); }
+  #view-security{ background: radial-gradient(820px 520px at 28% 6%, rgba(255,80,80,0.12), transparent 62%); }
   /* Grosses, leise schwebendes Symbol-Wasserzeichen */
   .view::after { position: absolute; right: 4%; top: 18%; font-size: 230px; opacity: 0.05; pointer-events: none; z-index: 0; animation: floaty 9s ease-in-out infinite; }
   #view-chat::after    { content:"💬"; }
@@ -258,6 +260,8 @@
   #view-shop::after    { content:"🛒"; }
   #view-research::after{ content:"🔍"; }
   #view-marketing::after{ content:"📣"; }
+  #view-tasksagent::after{ content:"✅"; }
+  #view-security::after{ content:"🛡️"; }
 
   /* Chat-Bereiche */
   .chat { flex: 1; overflow-y: auto; padding: 16px 26px 8px; display: flex; flex-direction: column; gap: 14px; }
@@ -533,6 +537,8 @@
       <div class="navbtn" data-view="shop" onclick="switchView('shop')"><span class="ic">🛒</span> Dropshipping</div>
       <div class="navbtn" data-view="research" onclick="switchView('research')"><span class="ic">🔍</span> Produktrecherche</div>
       <div class="navbtn" data-view="marketing" onclick="switchView('marketing')"><span class="ic">📣</span> Marketing</div>
+      <div class="navbtn" data-view="tasksagent" onclick="switchView('tasksagent')"><span class="ic">✅</span> Aufgaben</div>
+      <div class="navbtn" data-view="security" onclick="switchView('security')"><span class="ic">🛡️</span> Sicherheit</div>
       <div class="navbtn" data-view="nav" onclick="switchView('nav')"><span class="ic">🗺️</span> Navigation</div>
       <div class="navbtn" onclick="carModeEnter()"><span class="ic">🚗</span> Auto-Modus</div>
     </div>
@@ -889,6 +895,48 @@
       </div>
     </div>
 
+    <!-- Aufgaben-Agent -->
+    <div class="view" id="view-tasksagent">
+      <div class="viewhead"><h2>✅ Aufgaben-Agent</h2><p>Kennt deine echte Aufgabenliste – priorisiert, plant und zerlegt Ziele in Schritte.</p></div>
+      <div class="chat" id="chat-tasksagent"></div>
+      <div class="chips" id="chips-tasksagent">
+        <div class="chip" onclick="ask('tasksagent','Schau dir meine aktuelle Aufgabenliste an. Was sollte ich HEUTE zuerst erledigen und warum? Priorisiere nach Dringlichkeit und Fälligkeit.')">🔝 Was zuerst?</div>
+        <div class="chip" onclick="ask('tasksagent','Schau dir meine Aufgabenliste an und gruppiere sie sinnvoll (z.B. nach Thema oder Dringlichkeit). Gibt es Aufgaben die zusammenpassen und in einem Rutsch erledigt werden könnten?')">🗂️ Aufgaben gruppieren</div>
+        <div class="chip" onclick="ask('tasksagent','Ich habe folgendes grosses Ziel: [ZIEL einfügen]. Zerlege es in 5-8 konkrete, klein genug um an einem Tag machbare Teilschritte, in sinnvoller Reihenfolge.')">🪜 Ziel in Schritte zerlegen</div>
+        <div class="chip" onclick="ask('tasksagent','Schau dir meine Aufgabenliste an: gibt es überfällige oder liegengebliebene Aufgaben? Schlage vor was ich streichen, delegieren oder neu terminieren sollte.')">🧹 Liste aufräumen</div>
+        <div class="chip" onclick="ask('tasksagent','Erstelle mir einen realistischen Tagesplan basierend auf meiner aktuellen Aufgabenliste – mit ungefähren Zeitfenstern, inklusive Pausen. Nicht überladen.')">🗓️ Tagesplan erstellen</div>
+        <div class="chip" onclick="ask('tasksagent','Erstelle mir einen Wochenplan basierend auf meiner aktuellen Aufgabenliste: welche Aufgabe an welchem Tag, damit nichts liegenbleibt und es machbar bleibt.')">📆 Wochenplan erstellen</div>
+        <div class="chip" onclick="ask('tasksagent','Ich schiebe folgende Aufgabe ständig auf: [AUFGABE einfügen]. Warum könnte das sein und wie schaffe ich es endlich anzufangen? Konkrete, kleine erste Schritte.')">⏳ Prokrastination lösen</div>
+      </div>
+      <div class="bar">
+        <button class="btn mic" data-mic onclick="toggleMic('tasksagent')">🎤</button>
+        <input data-input placeholder="Frag nach Priorisierung, Plan oder Zielen…" onkeydown="if(event.key==='Enter')send('tasksagent')">
+        <button class="btn sendb" onclick="send('tasksagent')">➤</button>
+      </div>
+    </div>
+
+    <!-- Sicherheits-Agent -->
+    <div class="view" id="view-security">
+      <div class="viewhead"><h2>🛡️ Sicherheit</h2><p>Sicherheitstipps, Passwort-Check und Warnzeichen für Betrug/Phishing.</p></div>
+      <div class="chat" id="chat-security"></div>
+      <div class="chips" id="chips-security">
+        <div class="chip" onclick="ask('security','Erkläre mir woran ich eine Phishing-E-Mail oder gefälschte SMS erkenne. Nenne die 6 wichtigsten Warnzeichen mit Beispielen.')">🎣 Phishing erkennen</div>
+        <div class="chip" onclick="ask('security','Ich habe folgende Nachricht/E-Mail bekommen: [TEXT EINFÜGEN]. Wirkt das verdächtig/betrügerisch? Was sollte ich tun?')">🔎 Nachricht prüfen</div>
+        <div class="chip" onclick="ask('security','Wie erstelle ich sichere, aber merkbare Passwörter? Erkläre die Passphrasen-Methode mit einem Beispiel, und ob ich einen Passwort-Manager nutzen sollte.')">🔑 Sichere Passwörter</div>
+        <div class="chip" onclick="ask('security','Erkläre mir was Zwei-Faktor-Authentifizierung (2FA) ist, warum sie wichtig ist, und wie ich sie bei meinen wichtigsten Konten (E-Mail, Google, Banking) aktiviere.')">🔐 2FA einrichten</div>
+        <div class="chip" onclick="ask('security','Gib mir eine Checkliste um zu prüfen ob mein WLAN/Heimnetzwerk sicher konfiguriert ist – Router-Passwort, Verschlüsselung, Gäste-Netzwerk, Firmware-Updates.')">📶 WLAN-Sicherheit prüfen</div>
+        <div class="chip" onclick="ask('security','Erkläre mir die aktuell häufigsten Betrugsmaschen (Enkeltrick, falscher Support-Anruf, Fake-Shops, Krypto-Betrug, Romance Scam) und wie ich mich und meine Familie davor schütze.')">⚠️ Aktuelle Betrugsmaschen</div>
+        <div class="chip" onclick="ask('security','Ich möchte prüfen ob eine meiner E-Mail-Adressen in einem bekannten Datenleck aufgetaucht ist. Erkläre mir wie ich das sicher selbst über haveibeenpwned.com prüfen kann, Schritt für Schritt.')">💧 Datenleck-Check erklären</div>
+        <div class="chip" onclick="ask('security','Gib mir eine Checkliste für sicheres Online-Banking und Online-Shopping: worauf muss ich achten (https, Absenderadresse, Zahlungsmethoden, verdächtige Angebote)?')">💳 Sicher online bezahlen</div>
+        <div class="chip" onclick="ask('security','Was mache ich als Erstes wenn ich vermute dass eines meiner Konten gehackt wurde? Gib mir eine klare Schritt-für-Schritt-Anleitung zur Schadensbegrenzung.')">🚨 Konto gehackt – was tun?</div>
+      </div>
+      <div class="bar">
+        <button class="btn mic" data-mic onclick="toggleMic('security')">🎤</button>
+        <input data-input placeholder="Frag zu Sicherheit, Betrug oder Passwörtern…" onkeydown="if(event.key==='Enter')send('security')">
+        <button class="btn sendb" onclick="send('security')">➤</button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Timer-Anzeige -->
@@ -1060,7 +1108,7 @@ const sfxListen  = ()=>{ beep(520, 880, 0.12, 'sine', 0.05); };
 const sfxWake    = ()=>{ beep(660,1320,0.12,'sine',0.07); setTimeout(()=>beep(880,1760,0.10,'sine',0.06),100); };
 
 // Eigener Gesprächsverlauf pro Bereich → bleibt aufgeräumt
-const histories = { chat: [], trading: [], money: [], shop: [], research: [], marketing: [] };
+const histories = { chat: [], trading: [], money: [], shop: [], research: [], marketing: [], tasksagent: [], security: [] };
 
 const BASE = ()=>`Du bist ${jName}, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis.`;
 const PROMPTS = {
@@ -1069,7 +1117,9 @@ const PROMPTS = {
   money: ()=>BASE() + ` Fokus: Geld verdienen. Sei direkt, versiert und konkret. Liefere fertige PLÄNE und Schritt-für-Schritt-Anleitungen mit echten Zahlen: Aufwand, möglicher Verdienst (pro Tag/Woche) und der allererste Schritt, den Kamil HEUTE machen kann. Nutze die Web-Suche für aktuelle Möglichkeiten. KEINE entmutigenden Floskeln wie "online kann man nicht einfach Geld verdienen" – zeig stattdessen genau WIE es geht. Denke breit: Skills/Dienstleistungen verkaufen, Flipping, Online-Gigs, lokale Jobs, kleine Geschäftsideen.`,
   shop: ()=>BASE() + ` Du bist Kamils persönlicher Dropshipping-Experte. Dein Ziel: ihm helfen, schnell einen profitablen Online-Shop aufzubauen. Regeln: 1) Immer konkret – echte Produktnamen, echte Preise, echte Margen. 2) Formatiere Produkte als Tabelle oder klare Liste. 3) Nutze Web-Suche für aktuelle Trends, AliExpress-Preise und Wettbewerb. 4) Schlage immer nächste Schritte vor. 5) Wenn Kamil eine Nische nennt: erstelle sofort einen kompletten Shop-Plan mit 5-8 Produkten, Einkaufspreis, Verkaufspreis, Marge in % und Lieferant (AliExpress/CJ/Spocket). 6) Schreibe Produkttexte verkaufsstark und auf Deutsch. 7) Kenne die Shopify-Plattform gut – gib konkrete Setup-Tipps.`,
   research: ()=>BASE() + ` Du bist Kamils Produktrecherche-Agent. Aufgabe: Produkte, Nischen und Märkte analysieren – unabhängig davon, ob es später für einen eigenen Shop, Weiterverkauf oder privaten Bedarf ist. Regeln: 1) Nutze immer die Web-Suche für aktuelle Trends/Preise/Wettbewerb, keine veralteten Vermutungen. 2) Sei ehrlich und nüchtern – wenn eine Idee schlecht ist, sag es klar mit Begründung, statt schönzureden. 3) Strukturiere Antworten mit Zwischenüberschriften oder Tabellen, nicht als Textwand. 4) Gib am Ende JEDER Analyse eine klare Handlungsempfehlung in einem Satz. 5) Denke breiter als nur Dropshipping: auch Second-Hand-Arbitrage, lokale Marktlücken, Dienstleistungs-Nischen zählen als "Produkt".`,
-  marketing: ()=>BASE() + ` Du bist Kamils Marketing-Agent mit breitem Fachwissen: Copywriting, Social Media (Instagram/TikTok/Facebook), E-Mail-Marketing/Funnels, SEO-Grundlagen, Branding, Influencer-Kooperationen, Kundenbindung und Reputationsmanagement. Regeln: 1) Liefere immer FERTIGE Texte zum direkten Kopieren, keine vagen Vorschläge oder Gerüste. 2) Auf Deutsch, außer explizit anders gewünscht. 3) Wenn ein Produkt/Thema nicht genannt wurde, frag knapp nach statt zu raten. 4) Nutze Web-Suche für aktuelle Trends/Formate/Konkurrenzbeispiele, wenn relevant. 5) Ton: verkaufsstark aber nicht plump oder reißerisch – überzeugend durch Klarheit statt durch Übertreibung. 6) Biete bei Werbetexten wenn möglich 2-3 Varianten zum Auswählen an. 7) Denke in kompletten Kampagnen/Funnels, nicht nur Einzeltexten – wenn sinnvoll, schlage vor was als Nächstes folgen sollte (z.B. nach einer Anzeige: passende Landingpage-Headline oder Follow-up-Mail). 8) Bei Beschwerden/negativen Bewertungen: immer deeskalierend, nie defensiv oder rechtfertigend.`
+  marketing: ()=>BASE() + ` Du bist Kamils Marketing-Agent mit breitem Fachwissen: Copywriting, Social Media (Instagram/TikTok/Facebook), E-Mail-Marketing/Funnels, SEO-Grundlagen, Branding, Influencer-Kooperationen, Kundenbindung und Reputationsmanagement. Regeln: 1) Liefere immer FERTIGE Texte zum direkten Kopieren, keine vagen Vorschläge oder Gerüste. 2) Auf Deutsch, außer explizit anders gewünscht. 3) Wenn ein Produkt/Thema nicht genannt wurde, frag knapp nach statt zu raten. 4) Nutze Web-Suche für aktuelle Trends/Formate/Konkurrenzbeispiele, wenn relevant. 5) Ton: verkaufsstark aber nicht plump oder reißerisch – überzeugend durch Klarheit statt durch Übertreibung. 6) Biete bei Werbetexten wenn möglich 2-3 Varianten zum Auswählen an. 7) Denke in kompletten Kampagnen/Funnels, nicht nur Einzeltexten – wenn sinnvoll, schlage vor was als Nächstes folgen sollte (z.B. nach einer Anzeige: passende Landingpage-Headline oder Follow-up-Mail). 8) Bei Beschwerden/negativen Bewertungen: immer deeskalierend, nie defensiv oder rechtfertigend.`,
+  tasksagent: ()=>BASE() + ` Du bist Kamils Aufgaben-Agent. Du siehst unten Kamils AKTUELLE, ECHTE Aufgabenliste – beziehe dich konkret darauf, erfinde keine Aufgaben dazu. Regeln: 1) Priorisiere nach Fälligkeitsdatum und erkennbarer Dringlichkeit/Wichtigkeit, nicht einfach nach Reihenfolge in der Liste. 2) Sei ein direkter, pragmatischer Produktivitäts-Coach – keine generischen Motivationssprüche, sondern konkrete nächste Schritte. 3) Bei grossen Zielen: zerlege sie in kleine, an einem Tag machbare Schritte. 4) Bei Tagesplänen: realistisch bleiben, Pausen einplanen, nicht überladen. 5) Wenn die Aufgabenliste leer ist, sag das und frag was Kamil erledigen möchte. 6) Erkenne Prokrastinations-Muster (Aufgabe wird ständig verschoben) und sprich sie ehrlich, aber unterstützend an.\n\nAKTUELLE AUFGABENLISTE:\n` + (typeof tasks!=='undefined' && tasks.length ? tasks.map(t=>'- ['+(t.done?'x':' ')+'] '+t.text+(t.due?' (fällig: '+t.due+')':'')).join('\n') : '(momentan leer)'),
+  security: ()=>BASE() + ` Du bist Kamils Sicherheits-Agent für digitale Alltags-Sicherheit (KEIN Penetration-Testing/Hacking-Tool). Fokus: Kamil und seine Familie vor Phishing, Betrug, Datenlecks und unsicheren Konten schützen. Regeln: 1) Erkläre verständlich, ohne unnötige Panik zu verbreiten – sachlich und konkret. 2) Bei "Nachricht prüfen"-Anfragen: analysiere auf typische Warnzeichen (Dringlichkeit, Rechtschreibfehler, verdächtige Links/Absender, Forderung nach Zugangsdaten) und gib eine klare Einschätzung plus nächsten Schritt. 3) Empfehle immer offizielle, seriöse Wege (z.B. offizielle Webseiten direkt aufrufen statt Links in E-Mails klicken, offizielle Support-Nummern statt Rückrufnummern aus verdächtigen Nachrichten). 4) Bei "Konto gehackt"-Fragen: klare Schritt-für-Schritt-Anleitung (Passwort ändern, 2FA aktivieren, andere Konten mit gleichem Passwort prüfen, Bank/Anbieter informieren falls nötig). 5) Erwähne nie, dass du selbst Passwörter/Zugangsdaten speichern oder einsehen kannst – du gibst nur Ratschläge, Kamil handelt selbst. 6) Nutze Web-Suche für aktuell kursierende Betrugsmaschen, wenn relevant.`
 };
 // Erklär-Stile pro Bereich
 const levels = { trading:'normal', money:'normal' };
@@ -3987,7 +4037,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.9 · Trading & Marketing ausgebaut';
+const JARVIS_VERSION = 'v4.0 · Aufgaben- & Sicherheits-Agent';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
