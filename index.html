@@ -2971,6 +2971,8 @@ function navInit(){
     attributionControl:{compact:true}
   });
   navMap.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-left');
+  // 3D-Gebäude einblenden, sobald der Kartenstil geladen ist (echte Häuser-Klötze wie bei Google Maps)
+  navMap.on('load', ()=>{ navAdd3DBuildings(); });
   // Wenn der Nutzer selbst die Karte zieht → Folge-Modus aus
   navMap.on('dragstart', ()=>{ if(!navDemoTimer) navFollow=false; });
   // Karte muss bei jeder Grössenänderung (Drehung, Tastatur, Browserleiste ein/aus) neu vermessen werden,
@@ -3003,6 +3005,32 @@ function navSetUserMarker(){
   const ll = [navUserPos[1], navUserPos[0]];
   if(navUserMarker) navUserMarker.setLngLat(ll);
   else navUserMarker = new maplibregl.Marker({color:'#0a84ff'}).setLngLat(ll).addTo(navMap);
+}
+
+// 3D-Gebäude als extrudierte Klötze einblenden (macht die Schrägansicht echt räumlich)
+function navAdd3DBuildings(){
+  if(!navMap || navMap.getLayer('3d-buildings')) return;
+  const style = navMap.getStyle(); if(!style) return;
+  const layers = style.layers || [];
+  // Vorhandene flache Gebäude-Ebene finden -> deren Quelle/Source-Layer für die 3D-Version übernehmen
+  let src, srcLayer, labelLayerId;
+  for(const l of layers){
+    if(!src && l['source-layer']==='building' && l.source){ src = l.source; srcLayer = 'building'; }
+    if(!labelLayerId && l.type==='symbol' && l.layout && l.layout['text-field']){ labelLayerId = l.id; }
+  }
+  if(!src){ src = 'openmaptiles'; srcLayer = 'building'; }   // Fallback für OpenMapTiles-Schema
+  try{
+    navMap.addLayer({
+      id:'3d-buildings', source:src, 'source-layer':srcLayer,
+      type:'fill-extrusion', minzoom:14,
+      paint:{
+        'fill-extrusion-color':'#c7ccd6',
+        'fill-extrusion-height':['coalesce',['get','render_height'],['get','height'],10],
+        'fill-extrusion-base':['coalesce',['get','render_min_height'],['get','min_height'],0],
+        'fill-extrusion-opacity':0.85
+      }
+    }, labelLayerId);
+  }catch(e){ /* Stil kennt keine Gebäude-Ebene -> still ignorieren */ }
 }
 
 // Route als Linie auf der Karte zeichnen (wartet bis Kartenstil geladen)
@@ -4193,7 +4221,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.0 · Website-Erkennung bombensicher';
+const JARVIS_VERSION = 'v5.1 · 3D-Navigation mit Gebäuden';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
