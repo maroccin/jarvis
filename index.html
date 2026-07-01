@@ -782,6 +782,15 @@
           <div class="lvl" onclick="setLevel('trading','profi',this)">🎓 Profi</div>
         </div>
       </div>
+      <!-- Portfolio-Überwachung: Echtzeit-Kurse, Stop-Loss/Take-Profit-Alarme, Handeln-Link -->
+      <div style="padding:0 16px 10px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button onclick="portfolioToggle()" id="portfolioToggleBtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;font-weight:600;">📊 Portfolio (0)</button>
+          <button onclick="portfolioAdd()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">➕ Position hinzufügen</button>
+          <span style="font-size:11px;color:var(--muted);">Live-Kurse nur für Krypto (kostenlos, kein Key nötig)</span>
+        </div>
+        <div id="portfolioList" style="display:none;margin-top:10px;flex-direction:column;gap:8px;"></div>
+      </div>
       <div class="chat" id="chat-trading"></div>
       <div class="chips" id="chips-trading">
         <div class="chip" onclick="ask('trading','Welche Aktien laufen heute? Gib mir 3 konkrete Daytrading-Ideen mit aktuellen Kursen.')">📊 Heutige Picks</div>
@@ -794,6 +803,7 @@
         <div class="chip" onclick="ask('trading','Welche wichtigen Wirtschaftstermine (Zinsentscheide, Earnings, Wirtschaftsdaten) stehen diese Woche an und wie könnten sie die Märkte bewegen? Nutze aktuelle Daten.')">🗓️ Termine diese Woche</div>
         <div class="chip" onclick="ask('trading','Erstelle mir eine Watchlist mit 5 aktuell interessanten Aktien/Coins für die nächsten Wochen – mit Grund warum sie interessant sind und auf welches Level ich achten sollte.')">👀 Watchlist erstellen</div>
         <div class="chip" onclick="ask('trading','Erkläre mir das Makro-Umfeld gerade: Zinsen, Inflation, wichtige geopolitische Faktoren – und wie das die Aktien-/Krypto-Märkte aktuell beeinflusst. Nutze aktuelle Daten.')">🌍 Makro-Überblick</div>
+        <div class="chip" onclick="ask('trading','Gib mir für [COIN/AKTIE einfügen] einen konkreten Einstiegsplan: bei welchem Kurs jetzt einsteigen, welcher Stop-Loss, welches Take-Profit-Ziel. Kurz begründen. Ich trage das dann selbst als Portfolio-Alarm ein.')">🎯 Einstiegspunkt vorschlagen</div>
       </div>
       <div class="bar">
         <button class="btn mic" data-mic onclick="toggleMic('trading')">🎤</button>
@@ -1164,7 +1174,7 @@ const sfxWake    = ()=>{ beep(660,1320,0.12,'sine',0.07); setTimeout(()=>beep(88
 // Eigener Gesprächsverlauf pro Bereich → bleibt aufgeräumt
 const histories = { chat: [], trading: [], money: [], shop: [], research: [], marketing: [], tasksagent: [], security: [], website: [] };
 
-const BASE = ()=>`Du bist ${jName}, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis.`;
+const BASE = ()=>`Du bist ${jName}, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis. Du hast trockenen, charmanten Humor – gelegentlich ein pointierter Spruch oder eine lockere Bemerkung ist willkommen, aber übertreib's nicht und lass es nie auf Kosten von Klarheit oder Nützlichkeit gehen. Bei ernsten Themen (Geld, Sicherheit, Gesundheit) Humor sparsam einsetzen.`;
 const PROMPTS = {
   chat: ()=>BASE() + ` Du hilfst bei allem im Alltag: Rezepte, Planung, Fragen, Ideen. Wenn Kamil Musik/Videos hören oder eine Webseite öffnen will, gib ihm einen anklickbaren Markdown-Link zum Starten, z.B. [▶️ Auf YouTube abspielen](https://www.youtube.com/results?search_query=SUCHE) oder [🎵 Auf Spotify](https://open.spotify.com/search/SUCHE) – ersetze SUCHE durch den Wunsch (Leerzeichen mit + bzw. %20). Bei „öffne X" gib den passenden Link der Seite.`,
   trading: ()=>BASE() + ` Du bist Kamils Trading-Agent mit breitem Fachwissen zu Aktien, Krypto, ETFs und Makroökonomie. Regeln: 1) Nutze IMMER die Web-Suche für aktuelle Kurse/News/Termine, keine veralteten Daten. 2) Nenne konkrete Werte mit klarer Einschätzung, Einstiegs- und Stop-Loss-Idee, statt vager Aussagen. 3) Beherrsche technische Analyse (Trend, Support/Resistance, RSI, Volumen) UND fundamentale/makroökonomische Einordnung – nutze je nach Frage das passende. 4) Bei Portfolio-/Risikofragen: rechne konkret vor (Positionsgrößen, Risiko-Rendite-Verhältnis, Diversifikation). 5) Passe dich an den gefragten Trading-Stil an (Daytrading/Swing/Langfristig) statt pauschal zu antworten. 6) Risikohinweis nur in EINEM kurzen Satz am Ende, keine ausweichende "frag einen Berater"-Predigt. 7) Sei ehrlich bei Unsicherheit – lieber "Marktlage ist unklar, hier die zwei Szenarien" als eine erfundene Sicherheit vorzutäuschen.`,
@@ -1188,6 +1198,110 @@ function setLevel(view, lvl, btnEl){
   const cont = btnEl.parentElement;
   cont.querySelectorAll('.lvl').forEach(b => b.classList.toggle('sel', b===btnEl));
 }
+
+// ---- Portfolio-Überwachung: Echtzeit-Krypto-Kurse + Stop-Loss/Take-Profit-Alarme ----
+// Ehrlicher Rahmen: kein automatischer Kauf möglich (kein Broker-Zugriff aus Sicherheitsgründen) -
+// aber Live-Überwachung, Alarme und ein direkter "Jetzt handeln"-Link zur Börse.
+let portfolio = JSON.parse(localStorage.getItem('jarvis_portfolio') || '[]');
+function savePortfolio(){ localStorage.setItem('jarvis_portfolio', JSON.stringify(portfolio)); }
+function portfolioToggle(){
+  const box = el('#portfolioList'); if(!box) return;
+  const open = box.style.display === 'flex';
+  box.style.display = open ? 'none' : 'flex';
+  if(!open) portfolioRender();
+}
+async function portfolioAdd(){
+  const query = prompt('Welches Krypto (Name oder Symbol, z.B. Bitcoin oder BTC)?');
+  if(!query) return;
+  let coin;
+  try{
+    const r = await fetch('https://api.coingecko.com/api/v3/search?query='+encodeURIComponent(query));
+    const j = await r.json();
+    coin = j.coins && j.coins[0];
+  }catch(e){}
+  if(!coin){ alert('„'+query+'" nicht gefunden. Versuch den vollen Namen (z.B. "Bitcoin" statt "BTC").'); return; }
+  const amountStr = prompt('Wie viel '+coin.symbol.toUpperCase()+' hältst du (Menge)?');
+  const amount = parseFloat((amountStr||'').replace(',','.'));
+  if(!amount || amount<=0) return;
+  const buyStr = prompt('Zu welchem Kaufpreis pro Stück (USD)? (Leer lassen = aktueller Kurs wird genommen)');
+  const buyPrice = buyStr ? parseFloat(buyStr.replace(',','.')) : null;
+  const slStr = prompt('Stop-Loss Preis (USD)? Leer lassen = kein Alarm.');
+  const stopLoss = slStr ? parseFloat(slStr.replace(',','.')) : null;
+  const tpStr = prompt('Take-Profit Preis (USD)? Leer lassen = kein Alarm.');
+  const takeProfit = tpStr ? parseFloat(tpStr.replace(',','.')) : null;
+  portfolio.push({
+    id: Date.now()+'', coingeckoId: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name,
+    amount, buyPrice, stopLoss, takeProfit, alertedSL:false, alertedTP:false
+  });
+  savePortfolio();
+  el('#portfolioList').style.display = 'flex';
+  portfolioRender();
+  portfolioPollPrices();
+  addMsg('trading','➕ **'+coin.name+'** ('+coin.symbol.toUpperCase()+') zum Portfolio hinzugefügt. Ich überwache den Kurs live.','jarvis');
+}
+function portfolioRemove(id){
+  portfolio = portfolio.filter(p=>p.id!==id);
+  savePortfolio(); portfolioRender();
+}
+function portfolioBuyLink(symbol){
+  return 'https://www.binance.com/en/trade/'+encodeURIComponent(symbol)+'_USDT';
+}
+let portfolioPrices = {};   // coingeckoId -> aktueller USD-Preis
+function portfolioRender(){
+  const box = el('#portfolioList'); if(!box) return;
+  const btn = el('#portfolioToggleBtn'); if(btn) btn.textContent = '📊 Portfolio ('+portfolio.length+')';
+  if(!portfolio.length){ box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Noch keine Position. Tippe „➕ Position hinzufügen".</div>'; return; }
+  box.innerHTML = portfolio.map(p=>{
+    const price = portfolioPrices[p.coingeckoId];
+    const pl = (price && p.buyPrice) ? (((price-p.buyPrice)/p.buyPrice)*100) : null;
+    const plColor = pl==null ? 'var(--muted)' : (pl>=0 ? 'var(--green)' : '#ff5c5c');
+    const plTxt = pl==null ? '' : (pl>=0?'+':'')+pl.toFixed(1)+'%';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);flex-wrap:wrap;">'+
+      '<div style="flex:1;min-width:120px;">'+
+        '<div style="font-weight:700;">'+escHtml(p.name)+' <span style="color:var(--muted);font-weight:400;">'+p.symbol+'</span></div>'+
+        '<div style="font-size:12px;color:var(--muted);">'+p.amount+' Stück'+(p.buyPrice?(' · Kauf: $'+p.buyPrice):'')+'</div>'+
+      '</div>'+
+      '<div style="text-align:right;min-width:90px;">'+
+        '<div style="font-weight:700;">'+(price? '$'+(price<1?price.toPrecision(3):price.toFixed(2)) : '…')+'</div>'+
+        (plTxt? '<div style="font-size:12px;color:'+plColor+';font-weight:700;">'+plTxt+'</div>' : '')+
+      '</div>'+
+      (p.stopLoss||p.takeProfit ? '<div style="font-size:11px;color:var(--muted);width:100%;">'+(p.stopLoss?'🛑 SL $'+p.stopLoss+' ':'')+(p.takeProfit?'🎯 TP $'+p.takeProfit:'')+'</div>' : '')+
+      '<a href="'+portfolioBuyLink(p.symbol)+'" target="_blank" style="padding:6px 12px;border-radius:8px;background:var(--accent);color:#000;font-size:12px;font-weight:700;text-decoration:none;">🔗 Handeln</a>'+
+      '<button onclick="portfolioRemove(\''+p.id+'\')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12px;">✕</button>'+
+    '</div>';
+  }).join('');
+}
+async function portfolioPollPrices(){
+  if(!portfolio.length) return;
+  const ids = [...new Set(portfolio.map(p=>p.coingeckoId))].join(',');
+  try{
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+ids+'&vs_currencies=usd');
+    const j = await r.json();
+    portfolio.forEach(p=>{ if(j[p.coingeckoId]) portfolioPrices[p.coingeckoId] = j[p.coingeckoId].usd; });
+    if(el('#portfolioList').style.display === 'flex') portfolioRender();
+    portfolioCheckAlerts();
+  }catch(e){ /* Netzwerk kurz weg -> beim naechsten Poll erneut versuchen */ }
+}
+function portfolioCheckAlerts(){
+  let changed = false;
+  portfolio.forEach(p=>{
+    const price = portfolioPrices[p.coingeckoId]; if(!price) return;
+    if(p.stopLoss && !p.alertedSL && price <= p.stopLoss){
+      p.alertedSL = true; changed = true;
+      addMsg('trading','🛑 **Stop-Loss erreicht:** '+p.name+' steht bei $'+price+' (Limit: $'+p.stopLoss+'). Zeit zu handeln?\n\n[🔗 Jetzt auf Binance verkaufen]('+portfolioBuyLink(p.symbol)+')','jarvis');
+      speak('Achtung, Stop Loss für '+p.name+' erreicht.');
+    }
+    if(p.takeProfit && !p.alertedTP && price >= p.takeProfit){
+      p.alertedTP = true; changed = true;
+      addMsg('trading','🎯 **Take-Profit erreicht:** '+p.name+' steht bei $'+price+' (Ziel: $'+p.takeProfit+'). Gewinn mitnehmen?\n\n[🔗 Jetzt auf Binance verkaufen]('+portfolioBuyLink(p.symbol)+')','jarvis');
+      speak('Take Profit für '+p.name+' erreicht.');
+    }
+  });
+  if(changed) savePortfolio();
+}
+// Alle 30 Sekunden Kurse aktualisieren, solange das Portfolio nicht leer ist
+setInterval(portfolioPollPrices, 30000);
+if(portfolio.length) setTimeout(portfolioPollPrices, 2000);
 
 function el(sel, root=document){ return root.querySelector(sel); }
 function chatBox(view){ return document.getElementById('chat-'+view); }
@@ -4297,7 +4411,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.6 · Live-Gespräch startet zuverlässig';
+const JARVIS_VERSION = 'v5.7 · Portfolio-Alarme + Charlie mit Humor';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
@@ -4322,6 +4436,7 @@ buildDial(); renderHome(); renderScenes(); updateStatus();
 window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
 updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();
+if(el('#portfolioToggleBtn')) el('#portfolioToggleBtn').textContent = '📊 Portfolio ('+portfolio.length+')';
 if(faceOn) startFaceDetection();
 setInterval(renderChips, 30*60*1000);   // Schnell-Buttons an Tageszeit anpassen (halbstündlich)
 setInterval(renderAlerts, 60*1000);     // Meldungen aktuell halten (Timer/Lampen/Wetter)
