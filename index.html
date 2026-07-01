@@ -3547,15 +3547,18 @@ function matchWebsiteCmd(low){
 // ---- Car-Modus ----
 let carWakeLock = null;
 let carClockTimer = null;
+let carSpotifyTimer = null;
 
 async function carModeEnter(){
   el('#carOverlay').style.display = 'flex';
   // Bildschirm anlassen
   try{ if('wakeLock' in navigator) carWakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
   carClockTick();
+  if(carClockTimer) clearInterval(carClockTimer);
   carClockTimer = setInterval(carClockTick, 1000);
   carUpdateSpotify();
-  setInterval(carUpdateSpotify, 10000);
+  if(carSpotifyTimer) clearInterval(carSpotifyTimer);
+  carSpotifyTimer = setInterval(carUpdateSpotify, 10000);
   // Wetter
   if(myLoc) carSetWeather();
 }
@@ -3564,6 +3567,7 @@ function carModeExit(){
   el('#carOverlay').style.display = 'none';
   if(carWakeLock){ carWakeLock.release(); carWakeLock=null; }
   if(carClockTimer){ clearInterval(carClockTimer); carClockTimer=null; }
+  if(carSpotifyTimer){ clearInterval(carSpotifyTimer); carSpotifyTimer=null; }
 }
 
 function carClockTick(){
@@ -4614,7 +4618,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.1 · Live-Gespräch ignorierte Sprache (Wake-Bug)';
+const JARVIS_VERSION = 'v6.2 · Auto-Modus-Timer-Leck behoben';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
