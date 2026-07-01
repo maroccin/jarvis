@@ -1669,7 +1669,12 @@ function toggleLive(){
   if(liveMode){
     speakOn=true; busy=false;
     addMsg(currentView,'🎙️ **Live-Gespräch ist an.** Sprich einfach drauflos – ich höre durchgehend zu und antworte. Du kannst auch sagen: „Bereich Trading", „Schalte das Wohnzimmerlicht aus" oder „Stopp Gespräch" zum Beenden.','jarvis');
-    say('Live Gespräch ist an. Ich höre zu.');
+    speak('Live Gespräch ist an. Ich höre zu.');
+    // Mikrofon DIREKT starten, nicht erst warten bis die Sprachausgabe fertig ist – deren
+    // "onend"-Ereignis feuert in Chrome/Edge manchmal nicht zuverlässig, wodurch das Live-
+    // Gespräch sonst nie zu hören anfängt (das normale 🎤 startet deshalb bewusst genauso).
+    micWanted = true;
+    setTimeout(startRecog, 400);
   } else {
     micWanted=false; if(recog){ try{ recog.stop(); }catch(_){} } speechSynthesis.cancel();
     addMsg(currentView,'⏹️ Live-Gespräch beendet.','jarvis');
@@ -4292,7 +4297,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.5 · Echtes Spotify + besseres YouTube';
+const JARVIS_VERSION = 'v5.6 · Live-Gespräch startet zuverlässig';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
