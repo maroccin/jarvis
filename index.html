@@ -745,6 +745,18 @@
             <div class="dctitle">📷 KAMERA <span id="camName" style="float:right;color:var(--muted);font-weight:400;"></span></div>
             <div id="camBox"></div>
           </div>
+          <div class="dcard" id="energyCard">
+            <div class="dctitle">⚡ STROMVERBRAUCH</div>
+            <div id="energyBox"></div>
+          </div>
+          <div class="dcard" id="batteryCard">
+            <div class="dctitle">🔋 AKKUSTÄNDE</div>
+            <div id="batteryBox"></div>
+          </div>
+          <div class="dcard" id="presenceCard">
+            <div class="dctitle">🧍 ANWESENHEIT</div>
+            <div id="presenceBox"></div>
+          </div>
         </div>
         <div class="scene-row">
           <div class="scene" onclick="scene('Guten Morgen', true)">🌅 Guten Morgen</div>
@@ -2944,18 +2956,26 @@ function haStatus(m){ const e=el('#haStatus'); if(e) e.innerHTML=m; }
 function haFetch(path, opts){
   return fetch(haUrl+path, Object.assign({ headers:{ 'Authorization':'Bearer '+haToken, 'Content-Type':'application/json' } }, opts||{}));
 }
+// Sensoren/Anwesenheit (read-only, nicht schaltbar) - getrennt von haEntities gehalten,
+// damit die bestehende Geräte-Schalt-Logik unberührt bleibt.
+let haSensors = {};
 async function haLoad(){
   if(!haToken) return;
   try{
     const r = await haFetch('/api/states');
     if(!r.ok) throw new Error('HTTP '+r.status);
     const arr = await r.json();
-    haEntities = {};
-    arr.forEach(e=>{ const dom=e.entity_id.split('.')[0];
+    haEntities = {}; haSensors = {};
+    arr.forEach(e=>{ const dom=e.entity_id.split('.')[0]; const attrs = e.attributes||{};
       if(HA_DOMAINS[dom]){
-        const o = { name:(e.attributes&&e.attributes.friendly_name)||e.entity_id, state:e.state, domain:dom };
-        if(dom==='climate' && e.attributes){ o.temp = e.attributes.current_temperature; o.target = e.attributes.temperature; }
+        const o = { name:(attrs.friendly_name)||e.entity_id, state:e.state, domain:dom };
+        if(dom==='climate' && attrs){ o.temp = attrs.current_temperature; o.target = attrs.temperature; }
         haEntities[e.entity_id] = o;
+      } else if(dom==='sensor' || dom==='person' || (dom==='binary_sensor' && attrs.device_class)){
+        haSensors[e.entity_id] = {
+          name: attrs.friendly_name || e.entity_id, state: e.state, domain: dom,
+          unit: attrs.unit_of_measurement || '', deviceClass: attrs.device_class || ''
+        };
       }
     });
     renderHome(); renderRoutines(); renderDash();
@@ -4126,18 +4146,59 @@ function renderAlerts(){
   if(wxNow && /Regen|Gewitter|Schnee|Schauer/.test(wxNow.desc)) items.push('🌧️ '+wxNow.desc+' – denk an Schirm/Jacke');
   const openN=tasks.filter(t=>!t.done).length;
   if(openN && !items.some(x=>x.includes('Fällig'))) items.push('📋 '+openN+' offene Aufgabe'+(openN>1?'n':''));
+  // Niedrige Akkustände
+  const lowBatt = Object.values(haSensors).filter(s=>s.deviceClass==='battery' && parseFloat(s.state)<=20);
+  if(lowBatt.length) items.push('🪫 '+lowBatt.length+' Gerät(e) mit niedrigem Akku: '+lowBatt.map(s=>s.name).join(', '));
+  // Offene Fenster/Türen
+  const openWin = Object.values(haSensors).filter(s=>(s.deviceClass==='window'||s.deviceClass==='door') && s.state==='on');
+  if(openWin.length) items.push('🪟 Offen: '+openWin.map(s=>s.name).join(', '));
   if(!items.length) items.push('✅ Alles ruhig – nichts Dringendes.');
   box.innerHTML=items.map(t=>'<div class="alert">'+t+'</div>').join('');
 }
 function renderClimateCard(){
   const box=el('#climateBox'); if(!box) return;
   const ids=Object.keys(haEntities).filter(id=>haEntities[id].domain==='climate');
-  if(!ids.length){ box.innerHTML='<div class="dcMuted">Keine Klimageräte/Heizung verbunden. Über Home Assistant (⚙️ Einstellungen) hinzufügen.</div>'; return; }
-  box.innerHTML=ids.map(id=>{ const e=haEntities[id]; const on=haIsOn(e);
+  // Zusätzlich: reine Temperatur-Sensoren (z.B. "Wohnzimmer Temperatur") ohne eigenes Thermostat
+  const tempSensorIds = Object.keys(haSensors).filter(id=>haSensors[id].deviceClass==='temperature');
+  if(!ids.length && !tempSensorIds.length){ box.innerHTML='<div class="dcMuted">Keine Klimageräte/Temperatur-Sensoren verbunden. Über Home Assistant (⚙️ Einstellungen) hinzufügen.</div>'; return; }
+  let html = ids.map(id=>{ const e=haEntities[id]; const on=haIsOn(e);
     const temp = e.temp!=null ? e.temp+'°' : (on?'An':'Aus');
     return '<div class="climrow"><span class="cname">'+escHtml(e.name)+(e.target!=null?' <span style="color:var(--muted);font-size:11px;">Ziel '+e.target+'°</span>':'')+'</span>'+
       '<span class="ctemp">'+temp+'</span>'+
       '<button class="cbtn" onclick="haToggle(\''+id+'\');setTimeout(renderClimateCard,400)" title="An/Aus">⏻</button></div>';
+  }).join('');
+  html += tempSensorIds.map(id=>{ const s=haSensors[id];
+    return '<div class="climrow"><span class="cname">'+escHtml(s.name)+'</span><span class="ctemp">'+escHtml(s.state)+(s.unit?' '+s.unit:'')+'</span></div>';
+  }).join('');
+  box.innerHTML = html;
+}
+// Stromverbrauch: alle Sensoren mit Watt/kWh-Einheit
+function renderEnergyCard(){
+  const box=el('#energyBox'); if(!box) return;
+  const ids=Object.keys(haSensors).filter(id=>haSensors[id].deviceClass==='power' || /^(W|kW)$/.test(haSensors[id].unit));
+  if(!ids.length){ box.innerHTML='<div class="dcMuted">Kein Stromverbrauchs-Sensor verbunden.</div>'; return; }
+  box.innerHTML = ids.map(id=>{ const s=haSensors[id];
+    return '<div class="climrow"><span class="cname">'+escHtml(s.name)+'</span><span class="ctemp">'+escHtml(s.state)+' '+s.unit+'</span></div>';
+  }).join('');
+}
+// Akkustände: alle Batterie-Sensoren, niedrige zuerst und rot markiert
+function renderBatteryCard(){
+  const box=el('#batteryBox'); if(!box) return;
+  const ids=Object.keys(haSensors).filter(id=>haSensors[id].deviceClass==='battery');
+  if(!ids.length){ box.innerHTML='<div class="dcMuted">Keine Akkustand-Sensoren verbunden.</div>'; return; }
+  const sorted = ids.sort((a,b)=> (parseFloat(haSensors[a].state)||0) - (parseFloat(haSensors[b].state)||0));
+  box.innerHTML = sorted.map(id=>{ const s=haSensors[id]; const pct=parseFloat(s.state);
+    const low = !isNaN(pct) && pct<=20;
+    return '<div class="climrow"><span class="cname">'+(low?'🪫 ':'🔋 ')+escHtml(s.name)+'</span><span class="ctemp" style="'+(low?'color:#ff5c5c;':'')+'">'+escHtml(s.state)+'%</span></div>';
+  }).join('');
+}
+// Anwesenheit: alle person.*-Entitäten
+function renderPresenceCard(){
+  const box=el('#presenceBox'); if(!box) return;
+  const ids=Object.keys(haSensors).filter(id=>haSensors[id].domain==='person');
+  if(!ids.length){ box.innerHTML='<div class="dcMuted">Keine Personen in Home Assistant verbunden (device_tracker/person).</div>'; return; }
+  box.innerHTML = ids.map(id=>{ const s=haSensors[id]; const home = s.state==='home';
+    return '<div class="climrow"><span class="cname">'+(home?'🟢 ':'⚪ ')+escHtml(s.name)+'</span><span class="ctemp">'+(home?'Zuhause':'Unterwegs')+'</span></div>';
   }).join('');
 }
 function renderCamCard(){
@@ -4148,7 +4209,7 @@ function renderCamCard(){
   box.innerHTML='<img class="cam" data-cam="'+id+'" alt="Kamera-Bild">';
   refreshCams();
 }
-function renderDash(){ renderCalendar(); renderAlerts(); renderClimateCard(); renderCamCard(); }
+function renderDash(){ renderCalendar(); renderAlerts(); renderClimateCard(); renderCamCard(); renderEnergyCard(); renderBatteryCard(); renderPresenceCard(); }
 
 // ---- Dropshipping ----
 let shopifyKey = localStorage.getItem('jarvis_shopify_key')||'';
@@ -4411,7 +4472,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.7 · Portfolio-Alarme + Charlie mit Humor';
+const JARVIS_VERSION = 'v5.8 · Live-Dashboard (Energie/Akku/Anwesenheit)';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
