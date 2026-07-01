@@ -603,7 +603,7 @@
     </div>
 
     <!-- Grosser „Navigation starten"-Knopf (erscheint wenn Route berechnet, wie Google Maps „Los") -->
-    <button id="navStartBtn" onclick="navStart()" style="display:none;position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:7;padding:15px 34px;border-radius:30px;border:none;background:linear-gradient(90deg,#0a84ff,#35c8ff);color:#fff;font-size:17px;font-weight:800;cursor:pointer;box-shadow:0 6px 22px rgba(10,132,255,0.55);white-space:nowrap;">🚗 Navigation starten</button>
+    <button id="navStartBtn" onclick="navStart()" style="display:none;position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:9990;padding:17px 40px;border-radius:32px;border:none;background:linear-gradient(90deg,#0a84ff,#35c8ff);color:#fff;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 8px 28px rgba(10,132,255,0.65);white-space:nowrap;">🚗 Navigation starten</button>
 
     <!-- Abbiegeliste (schwebt unten, ausklappbare Leiste) -->
     <div id="navSteps" style="display:none;position:absolute;left:0;right:0;bottom:0;z-index:5;max-height:38%;overflow-y:auto;background:var(--card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,0.35);"></div>
@@ -4253,7 +4253,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.3 · Navigation-Start-Knopf';
+const JARVIS_VERSION = 'v5.4 · Start-Knopf immer sichtbar';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
