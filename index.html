@@ -3219,7 +3219,8 @@ function matchNavCmd(low, txt){
 // Erkennt Website-Bau-Wünsche egal in welchem Bereich getippt/gesagt ("erstelle mir eine Website für…")
 function matchWebsiteCmd(low){
   if(!/\b(websites?|webseiten?|web-?sites?|homepages?|landingpages?|landing\s*pages?)\b/.test(low)) return false;
-  if(!/(erstell|bau|mach|generier|entwirf|programmier)/.test(low)) return false;
+  // tippfehler-tolerant: erst...ll deckt erstelle/ersteelle/erstellen etc. ab
+  if(!/erst\w*ll|bau|mach|generier|entwirf|programmier/.test(low)) return false;
   return true;
 }
 
@@ -4122,7 +4123,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v4.6 · Website: viel mehr Platz (24k Tokens)';
+const JARVIS_VERSION = 'v4.7 · Website-Erkennung tippfehlertolerant';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
