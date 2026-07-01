@@ -3286,9 +3286,11 @@ function matchNavCmd(low, txt){
 
 // Erkennt Website-Bau-Wünsche egal in welchem Bereich getippt/gesagt ("erstelle mir eine Website für…")
 function matchWebsiteCmd(low){
-  if(!/\b(websites?|webseiten?|web-?sites?|homepages?|landingpages?|landing\s*pages?)\b/.test(low)) return false;
-  // tippfehler-tolerant: erst...ll deckt erstelle/ersteelle/erstellen etc. ab
-  if(!/erst\w*ll|bau|mach|generier|entwirf|programmier/.test(low)) return false;
+  // Bombensicher & tippfehlertolerant: sobald ein Website-Wort vorkommt, zum Website-Agenten leiten.
+  // (Deckt "ersttele eion website", "mach mir ne homepage", "webseite bauen" usw. ab, egal welche Verben/Tippfehler.)
+  // Ausnahme: reine Wissensfragen ("was ist eine website") sollen im normalen Chat bleiben.
+  if(!/\b(web-?seiten?|web-?sites?|homepages?|landing\s?pages?)\b/.test(low)) return false;
+  if(/^\s*(was ist|was sind|wie funktioniert|erkl[äa]r|definition)/.test(low)) return false;
   return true;
 }
 
@@ -4191,7 +4193,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v4.9 · Veröffentlichen ohne Konto (Netlify Drop)';
+const JARVIS_VERSION = 'v5.0 · Website-Erkennung bombensicher';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
