@@ -1340,6 +1340,8 @@ async function respond(view, q){
   if(wxCity){ doWeatherCity(wxCity); return; }
   const navDest = matchNavCmd(low, q);
   if(navDest){ switchView('nav'); navRouteTo(navDest); return; }
+  // Website-Wunsch aus JEDEM Bereich erkennen -> zum Website-Agenten mit Live-Vorschau springen
+  if(view!=='website' && matchWebsiteCmd(low)){ switchView('website'); ask('website', q); return; }
   if(!apiKey){
     addMsg(view, 'Ich brauche zuerst deinen Claude API Key. Klick links unten auf **⚙️ Einstellungen** und füg ihn ein. 🔑','jarvis');
     openSettings(); return;
@@ -3199,6 +3201,13 @@ function matchNavCmd(low, txt){
   return dest.length >= 2 ? dest : null;
 }
 
+// Erkennt Website-Bau-Wünsche egal in welchem Bereich getippt/gesagt ("erstelle mir eine Website für…")
+function matchWebsiteCmd(low){
+  if(!/\b(websites?|webseiten?|web-?sites?|homepages?|landingpages?|landing\s*pages?)\b/.test(low)) return false;
+  if(!/(erstell|bau|mach|generier|entwirf|programmier)/.test(low)) return false;
+  return true;
+}
+
 // ---- Car-Modus ----
 let carWakeLock = null;
 let carClockTimer = null;
@@ -4098,7 +4107,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v4.1 · Website-Agent (bauen + Vorschau)';
+const JARVIS_VERSION = 'v4.2 · Website-Erkennung ueberall';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
