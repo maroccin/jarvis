@@ -1825,8 +1825,11 @@ function handleVoice(txt){
   if(!txt){ resumeAfter(); return; }
   const low = txt.toLowerCase();
 
-  // Wake-Word-Filter: wenn Wake-Mode an und noch nicht aktiviert → nur auf "Jarvis" reagieren
-  if(wakeMode && !wakeActivated){
+  // Wake-Word-Filter: wenn Wake-Mode an und noch nicht aktiviert → nur auf "Jarvis" reagieren.
+  // Gilt NICHT während eines explizit über den Knopf gestarteten Live-Gesprächs – der Klick
+  // selbst ist schon die bewusste Aktivierung, ein zusätzliches "Jarvis" wäre unnötig und
+  // sorgte dafür, dass gesprochene Sätze im Live-Gespräch sonst stillschweigend ignoriert wurden.
+  if(wakeMode && !wakeActivated && !liveMode){
     if(WAKE_WORDS.some(w=>low.includes(w))){
       wakeActivate();
       // Rest des Satzes nach "jarvis" als Befehl nutzen falls vorhanden
@@ -4611,7 +4614,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.0 · Smart-Home-Automations-Agent';
+const JARVIS_VERSION = 'v6.1 · Live-Gespräch ignorierte Sprache (Wake-Bug)';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
