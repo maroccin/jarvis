@@ -841,7 +841,11 @@
       <label>Assistent-Name (z.B. Charlie, Jarvis, Max…)</label>
       <input id="nameInput" type="text" placeholder="JARVIS" maxlength="20">
       <label>Claude API Key</label>
-      <input id="keyInput" type="password" placeholder="sk-ant-api03-…">
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="keyInput" type="password" placeholder="sk-ant-api03-…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" style="flex:1;" oninput="updateKeyCheck()">
+        <button type="button" onclick="const k=el('#keyInput'); k.type = k.type==='password'?'text':'password';" style="padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:16px;" title="Key anzeigen/verstecken">👁️</button>
+      </div>
+      <p id="keyCheck" style="font-size:12px;color:var(--muted);min-height:16px;"></p>
       <label>Modell</label>
       <select id="modelInput">
         <option value="claude-sonnet-4-6">Sonnet 4.6 – schlau &amp; ausgewogen (empfohlen)</option>
@@ -2623,6 +2627,21 @@ function matchHA(low){
 }
 
 // ---- Einstellungen ----
+// Zeigt live an, ob der eingefügte Key plausibel aussieht (Länge, Anfang) -
+// ohne ihn komplett offenzulegen. Hilft, kaputte Handy-Einfügungen sofort zu erkennen.
+function updateKeyCheck(){
+  const box = el('#keyCheck'); if(!box) return;
+  const v = (el('#keyInput')?.value||'');
+  if(!v){ box.textContent=''; return; }
+  const okStart = v.startsWith('sk-ant-');
+  const okLen = v.length >= 90 && v.length <= 120;
+  const hasSpace = /\s/.test(v);
+  if(hasSpace){ box.textContent='⚠️ Enthält Leerzeichen/Zeilenumbruch – nochmal sauber einfügen.'; box.style.color='#ff6b6b'; return; }
+  if(!okStart){ box.textContent='⚠️ Sollte mit „sk-ant-" beginnen – prüfe den Key.'; box.style.color='#ff6b6b'; return; }
+  if(!okLen){ box.textContent='⚠️ Länge wirkt ungewöhnlich ('+v.length+' Zeichen) – evtl. unvollständig eingefügt.'; box.style.color='#ff6b6b'; return; }
+  box.textContent='✅ Sieht gültig aus ('+v.length+' Zeichen, beginnt mit sk-ant-…)'; box.style.color='#4caf50';
+}
+
 function openSettings(){
   el('#hueIp').value = hueIp;
   el('#lgIp').value = lgIp;
@@ -2633,6 +2652,7 @@ function openSettings(){
   el('#nameInput').value=jName;
   el('#bgPatternInput').value=localStorage.getItem('jarvis_bg')||'grid';
   el('#keyInput').value=apiKey; el('#modelInput').value=model; el('#webInput').checked=webOn; el('#sfxInput').checked=sfxOn;
+  updateKeyCheck();
   if(el('#spClientId')) el('#spClientId').value = spClientId;
   if(el('#spStatus')) el('#spStatus').textContent = spToken ? '✅ Verbunden' : (spClientId ? '⚠️ Noch nicht autorisiert – auf „Verbinden" klicken' : '');
   if(el('#spRedirectUri')) el('#spRedirectUri').textContent = location.origin + location.pathname;
@@ -3904,7 +3924,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.5 · Layout-Fix (kein Überlappen mehr)';
+const JARVIS_VERSION = 'v3.6 · Key-Feld mit Live-Prüfung';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
