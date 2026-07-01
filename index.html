@@ -781,6 +781,15 @@
         </div>
         <div class="scene-row" id="myScenes"></div>
         <div class="scene-row" id="haRoutines"></div>
+        <div style="font-size:11px;color:var(--muted);margin:14px 16px -4px;letter-spacing:1px;">🧠 KI-AUTOMATIONEN</div>
+        <div class="scene-row">
+          <div class="scene" onclick="agentOptimizeEnergy()">⚡ Stromverbrauch optimieren</div>
+          <div class="scene" onclick="agentCheckErrors()">🔍 Geräte auf Fehler prüfen</div>
+          <div class="scene" onclick="agentSuggestEveningRoutine()">🌙 Abendroutine vorschlagen</div>
+          <div class="scene" onclick="agentCheckFirmware()">🔄 Firmware-Updates prüfen</div>
+          <div class="scene" onclick="agentAnalyzeTemp()">🌡️ Raumtemperatur analysieren</div>
+          <div class="scene" onclick="agentMode()">🤖 Freie Aufgabe (Agent-Modus)</div>
+        </div>
         <div id="rooms"></div>
       </div>
     </div>
@@ -2971,7 +2980,7 @@ async function haLoad(){
         const o = { name:(attrs.friendly_name)||e.entity_id, state:e.state, domain:dom };
         if(dom==='climate' && attrs){ o.temp = attrs.current_temperature; o.target = attrs.temperature; }
         haEntities[e.entity_id] = o;
-      } else if(dom==='sensor' || dom==='person' || (dom==='binary_sensor' && attrs.device_class)){
+      } else if(dom==='sensor' || dom==='person' || dom==='update' || (dom==='binary_sensor' && attrs.device_class)){
         haSensors[e.entity_id] = {
           name: attrs.friendly_name || e.entity_id, state: e.state, domain: dom,
           unit: attrs.unit_of_measurement || '', deviceClass: attrs.device_class || ''
@@ -4249,6 +4258,103 @@ let shopifyKey = localStorage.getItem('jarvis_shopify_key')||'';
 let shopifyStore = localStorage.getItem('jarvis_shopify_store')||''; // z.B. mein-shop.myshopify.com
 let shopPlan = null; // aktueller generierter Shop-Plan (für Shopify-Push)
 
+// ---- Smart-Home-Automations-Agent: nutzt echte Home-Assistant-Live-Daten statt generischem Text ----
+function haNeedConnection(){
+  if(!Object.keys(haEntities).length && !Object.keys(haSensors).length){
+    addMsg('chat','⚠️ Verbinde zuerst Home Assistant (⚙️ Einstellungen), damit ich echte Geräte sehen kann.','jarvis');
+    return true;
+  }
+  return false;
+}
+// Stromverbrauch optimieren: zeigt an was gerade läuft und bietet Ein-Klick-Abschalten an
+function agentOptimizeEnergy(){
+  if(haNeedConnection()) return;
+  switchView('chat');
+  const on = Object.entries(haEntities).filter(([id,e])=>(e.domain==='light'||e.domain==='switch'||e.domain==='climate'||e.domain==='fan')&&haIsOn(e));
+  if(!on.length){ addMsg('chat','✅ Es läuft bereits nichts Unnötiges – alle Licht-/Steckdosen-Geräte sind aus.','jarvis'); return; }
+  const list = on.map(([id,e])=>'- '+e.name+' ('+e.domain+')').join('\n');
+  const btns = on.map(([id,e])=>'<button onclick="haToggle(\''+id+'\');this.remove();renderHome();" style="margin:4px 6px 0 0;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:12px;cursor:pointer;">✕ '+escHtml(e.name)+'</button>').join('');
+  const wrap = addMsg('chat','⚡ **'+on.length+' Gerät(e) laufen gerade:**\n\n'+list+'\n\nTippe auf ein Gerät um es sofort auszuschalten, oder sag „alles aus".','jarvis');
+  wrap.lastElementChild.insertAdjacentHTML('beforeend','<div style="margin-top:8px;">'+btns+'</div>');
+}
+// Alle Geräte/Sensoren auf "unavailable"/"unknown" prüfen (echte Fehlerzustände in Home Assistant)
+function agentCheckErrors(){
+  if(haNeedConnection()) return;
+  switchView('chat');
+  const all = { ...haEntities, ...haSensors };
+  const broken = Object.entries(all).filter(([id,e])=>e.state==='unavailable'||e.state==='unknown');
+  if(!broken.length){ addMsg('chat','✅ Alle verbundenen Geräte/Sensoren melden sich normal – keine Fehler gefunden.','jarvis'); return; }
+  const list = broken.map(([id,e])=>'- '+e.name+' → '+(e.state==='unavailable'?'nicht erreichbar':'Status unbekannt')).join('\n');
+  addMsg('chat','🔍 **'+broken.length+' Gerät(e)/Sensor(en) mit Problemen:**\n\n'+list+'\n\nMeist hilft: Batterie prüfen, WLAN-Signal checken, oder das Gerät neu starten.','jarvis');
+}
+// Firmware-Updates: Home Assistant "update"-Entitäten (state "on" = Update verfügbar)
+function agentCheckFirmware(){
+  if(haNeedConnection()) return;
+  switchView('chat');
+  const updates = Object.values(haSensors).filter(s=>s.domain==='update');
+  if(!updates.length){ addMsg('chat','ℹ️ Home Assistant meldet keine „Update"-Entitäten. Falls deine Geräte Updates unterstützen, muss dafür die passende Integration in Home Assistant aktiv sein.','jarvis'); return; }
+  const avail = updates.filter(s=>s.state==='on');
+  if(!avail.length){ addMsg('chat','✅ Alle '+updates.length+' geprüften Geräte sind aktuell – keine Firmware-Updates verfügbar.','jarvis'); return; }
+  addMsg('chat','🔄 **'+avail.length+' Update(s) verfügbar:**\n\n'+avail.map(s=>'- '+s.name).join('\n')+'\n\nUpdates installierst du am sichersten direkt in der Home-Assistant-Oberfläche (Einstellungen → System → Aktualisierungen).','jarvis');
+}
+// KI schlägt anhand der vorhandenen Geräte eine sinnvolle Abendroutine vor (nicht nur Snapshot des Ist-Zustands)
+async function agentSuggestEveningRoutine(){
+  if(haNeedConnection()) return;
+  if(!apiKey){ addMsg('chat','⚠️ Claude API Key in Einstellungen eingeben.','jarvis'); return; }
+  switchView('chat');
+  const list = Object.entries(haEntities).filter(([id,e])=>['light','switch','lock','cover'].includes(e.domain))
+    .map(([id,e])=>id+' = '+e.name+' ('+e.domain+')').join('\n');
+  if(!list){ addMsg('chat','⚠️ Keine schaltbaren Geräte gefunden (Licht/Steckdose/Schloss/Rollladen).','jarvis'); return; }
+  addMsg('chat','🌙 *Überlege mir eine sinnvolle Abendroutine…*','jarvis');
+  try{
+    const data = await callClaude({ model, max_tokens:600,
+      system:'Du bist ein Smart-Home-Assistent. Schlage anhand der Geräteliste eine sinnvolle ABENDROUTINE vor (z.B. Aussenlichter aus, ein gedämpftes Licht an, Türen verriegeln, Rollläden schliessen). Antworte NUR mit JSON: {"name":"Abendroutine","aenderungen":[{"entity_id":"...", "on":true/false, "grund":"kurzer Grund"}]}. Keine Erklärung ausserhalb des JSON.',
+      messages:[{role:'user', content:'Geräte:\n'+list}]
+    });
+    const raw = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+    const json = JSON.parse(raw.match(/\{[\s\S]*\}/)[0]);
+    const changes = json.aenderungen||[];
+    const snap = {}; changes.forEach(c=>{ if(haEntities[c.entity_id]) snap[c.entity_id] = c.on?'on':'off'; });
+    if(!Object.keys(snap).length){ addMsg('chat','⚠️ Konnte keine passende Routine ableiten.','jarvis'); return; }
+    haRoutines[json.name||'Abendroutine (KI)'] = snap;
+    localStorage.setItem('ha_routines', JSON.stringify(haRoutines)); renderRoutines();
+    const desc = changes.map(c=>'- '+(haEntities[c.entity_id]?.name||c.entity_id)+': '+(c.on?'an':'aus')+' – '+escHtml(c.grund||'')).join('\n');
+    addMsg('chat','🌙 **„'+escHtml(json.name||'Abendroutine')+'" gespeichert!** Du findest sie jetzt bei den Routinen zum Antippen.\n\n'+desc,'jarvis');
+  }catch(e){ addMsg('chat','❌ Konnte keine Routine vorschlagen: '+e.message,'jarvis'); }
+}
+// Analysiert die Temperatur-Historie eines Sensors/Raums über die letzten 24h
+async function agentAnalyzeTemp(){
+  if(haNeedConnection()) return;
+  if(!apiKey){ addMsg('chat','⚠️ Claude API Key in Einstellungen eingeben.','jarvis'); return; }
+  const tempIds = Object.entries(haSensors).filter(([id,s])=>s.deviceClass==='temperature');
+  const climateIds = Object.entries(haEntities).filter(([id,e])=>e.domain==='climate');
+  const options = [...tempIds, ...climateIds];
+  if(!options.length){ addMsg('chat','⚠️ Kein Temperatur-Sensor/Thermostat verbunden.','jarvis'); return; }
+  const names = options.map(([id,s],i)=>(i+1)+'. '+s.name).join('\n');
+  const choice = prompt('Welchen Raum/Sensor analysieren?\n\n'+names+'\n\nNummer eingeben:');
+  const idx = parseInt(choice)-1;
+  if(isNaN(idx) || !options[idx]) return;
+  const [entityId, meta] = options[idx];
+  switchView('chat');
+  addMsg('chat','🌡️ *Lade Temperaturverlauf für '+escHtml(meta.name)+'…*','jarvis');
+  try{
+    const since = new Date(Date.now()-24*3600*1000).toISOString();
+    const r = await haFetch('/api/history/period/'+since+'?filter_entity_id='+entityId+'&minimal_response');
+    const hist = await r.json();
+    const points = (hist[0]||[]).map(p=>({t:p.last_changed, v: p.attributes?.current_temperature ?? p.state})).filter(p=>p.v!=null && p.v!=='unavailable');
+    if(!points.length){ addMsg('chat','⚠️ Keine Verlaufsdaten gefunden (History in Home Assistant aktiviert?).','jarvis'); return; }
+    const vals = points.map(p=>parseFloat(p.v)).filter(v=>!isNaN(v));
+    const minV = Math.min(...vals), maxV = Math.max(...vals);
+    const sample = points.filter((_,i)=>i%Math.max(1,Math.floor(points.length/20))===0).map(p=>p.t.slice(11,16)+' Uhr: '+p.v+'°').join('\n');
+    const data = await callClaude({ model, max_tokens:500,
+      system:'Du bist ein Smart-Home-Analyst. Erkläre kurz und konkret, was der Temperaturverlauf zeigt und was mögliche Ursachen für Ausreisser sein könnten (Sonneneinstrahlung, Heizung, offenes Fenster, Gerätewärme). 3-5 Sätze, Deutsch.',
+      messages:[{role:'user', content:'Raum: '+meta.name+'. Min: '+minV+'°, Max: '+maxV+'°. Verlauf (Auszug):\n'+sample}]
+    });
+    const answer = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n');
+    addMsg('chat','🌡️ **'+escHtml(meta.name)+' – letzte 24h:** '+minV+'° bis '+maxV+'°\n\n'+answer,'jarvis');
+  }catch(e){ addMsg('chat','❌ Konnte Verlauf nicht laden: '+e.message,'jarvis'); }
+}
+
 // ---- Bild analysieren (Claude Vision) ----
 // ---- Agent-Modus: mehrstufige Aufgaben selbstständig abarbeiten ----
 async function agentMode(){
@@ -4505,7 +4611,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.9 · Sicherheits-Meldungen';
+const JARVIS_VERSION = 'v6.0 · Smart-Home-Automations-Agent';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
