@@ -543,38 +543,47 @@
   <video id="faceVideo" autoplay muted playsinline style="display:none;position:fixed;bottom:80px;right:16px;width:120px;height:90px;border-radius:10px;border:1px solid var(--border);z-index:800;object-fit:cover;opacity:0.7;"></video>
   <canvas id="faceCanvas" style="display:none;"></canvas>
 
-  <!-- Navigation View -->
-  <div class="view" id="view-nav" style="height:100%;padding:0;">
-    <!-- Suchleiste -->
-    <div style="display:flex;gap:8px;padding:12px 14px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;">
-      <input id="navInput" placeholder="Ziel eingeben (z.B. Zürich HB, Bäckerstrasse 10…)" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;" onkeydown="if(event.key==='Enter') navSearch()">
-      <button onclick="navSearch()" style="padding:10px 18px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:700;cursor:pointer;font-size:15px;">🔍</button>
-      <button onclick="navLocate()" title="Auf mich zentrieren / folgen" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">📍</button>
-      <button onclick="navOverview()" title="Ganze Route zeigen" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">🗺️</button>
-      <button id="navDemoBtn" onclick="navDemo()" title="Demo-Fahrt starten" style="padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:18px;">▶️</button>
-    </div>
-    <!-- Schnellziele -->
-    <div id="navQuick" style="display:flex;gap:8px;padding:8px 14px;flex-shrink:0;flex-wrap:wrap;background:var(--card);border-bottom:1px solid var(--border);">
-      <button onclick="navGo('home')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;">🏠 Nachhause</button>
-      <button onclick="navGo('work')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);cursor:pointer;font-size:13px;">💼 Arbeit</button>
-      <button onclick="navSaveLocation('home')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(100,100,100,0.3);background:none;color:var(--muted);cursor:pointer;font-size:12px;">✏️ Heim setzen</button>
-      <button onclick="navSaveLocation('work')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(100,100,100,0.3);background:none;color:var(--muted);cursor:pointer;font-size:12px;">✏️ Arbeit setzen</button>
-    </div>
-    <!-- Info-Leiste -->
-    <div id="navInfo" style="padding:8px 14px;font-size:13px;color:var(--muted);flex-shrink:0;min-height:28px;background:var(--card);border-bottom:1px solid var(--border);"></div>
-    <!-- Aktuelle Anweisung (Banner) -->
-    <div id="navBanner" style="display:none;align-items:center;gap:14px;padding:14px 16px;background:#0a84ff;color:#fff;flex-shrink:0;">
-      <div id="navBannerIcon" style="font-size:34px;line-height:1;">⬆️</div>
+  <!-- Navigation View: Karte füllt den ganzen Bereich, Bedienelemente schweben darüber -->
+  <div class="view" id="view-nav" style="height:100%;padding:0;position:relative;overflow:hidden;">
+    <!-- Karte (volle Fläche) -->
+    <div id="navMap" style="position:absolute;inset:0;"></div>
+
+    <!-- Aktuelle Anweisung (Banner, schwebt oben, nur während aktiver Navigation) -->
+    <div id="navBanner" style="display:none;position:absolute;top:0;left:0;right:0;align-items:center;gap:14px;padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px;background:#0a84ff;color:#fff;z-index:5;box-shadow:0 4px 14px rgba(0,0,0,0.35);">
+      <div id="navBannerIcon" style="font-size:32px;line-height:1;">⬆️</div>
       <div style="flex:1;min-width:0;">
         <div id="navBannerDist" style="font-size:13px;opacity:0.85;font-weight:600;">–</div>
-        <div id="navBannerText" style="font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">–</div>
+        <div id="navBannerText" style="font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">–</div>
       </div>
-      <button onclick="navStop()" title="Navigation beenden" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:700;">✕</button>
+      <button onclick="navStop()" title="Navigation beenden" style="background:rgba(255,255,255,0.2);border:none;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;">✕</button>
     </div>
-    <!-- Karte -->
-    <div id="navMap" style="flex:1;min-height:240px;"></div>
-    <!-- Abbiegeliste -->
-    <div id="navSteps" style="display:none;flex-shrink:0;max-height:34%;overflow-y:auto;background:var(--card);border-top:1px solid var(--border);"></div>
+
+    <!-- Suchleiste (schwebt oben, nur wenn KEINE aktive Navigation) -->
+    <div id="navSearchBar" style="position:absolute;top:calc(env(safe-area-inset-top,0px) + 10px);left:10px;right:10px;z-index:5;display:flex;gap:8px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;flex:1;min-width:200px;">
+        <input id="navInput" placeholder="Ziel eingeben…" style="flex:1;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:15px;box-shadow:0 2px 10px rgba(0,0,0,0.3);" onkeydown="if(event.key==='Enter') navSearch()">
+        <button onclick="navSearch()" style="padding:10px 16px;border-radius:10px;border:none;background:var(--accent);color:#000;font-weight:700;cursor:pointer;font-size:15px;">🔍</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="navLocate()" title="Auf mich zentrieren / folgen" style="padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:17px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">📍</button>
+        <button onclick="navOverview()" title="Ganze Route zeigen" style="padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:17px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">🗺️</button>
+        <button id="navDemoBtn" onclick="navDemo()" title="Demo-Fahrt starten" style="padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:17px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">▶️</button>
+      </div>
+    </div>
+
+    <!-- Schnellziele (schwebt unter der Suchleiste, nur wenn KEINE aktive Navigation) -->
+    <div id="navQuick" style="position:absolute;top:64px;left:10px;right:10px;z-index:5;display:flex;gap:8px;flex-wrap:wrap;">
+      <button onclick="navGo('home')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">🏠 Nachhause</button>
+      <button onclick="navGo('work')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">💼 Arbeit</button>
+      <button onclick="navSaveLocation('home')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(100,100,100,0.3);background:var(--card);color:var(--muted);cursor:pointer;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">✏️ Heim setzen</button>
+      <button onclick="navSaveLocation('work')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(100,100,100,0.3);background:var(--card);color:var(--muted);cursor:pointer;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,0.3);">✏️ Arbeit setzen</button>
+    </div>
+
+    <!-- Info-Leiste (schwebt, kompakte Pille) -->
+    <div id="navInfo" style="position:absolute;left:10px;right:10px;z-index:5;padding:8px 14px;font-size:13px;color:var(--text);min-height:16px;background:var(--card);border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.3);"></div>
+
+    <!-- Abbiegeliste (schwebt unten, ausklappbare Leiste) -->
+    <div id="navSteps" style="display:none;position:absolute;left:0;right:0;bottom:0;z-index:5;max-height:38%;overflow-y:auto;background:var(--card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,0.35);"></div>
   </div>
 
   <!-- Car-Modus Overlay -->
@@ -2689,6 +2698,15 @@ function navInit(){
   navMap.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-left');
   // Wenn der Nutzer selbst die Karte zieht → Folge-Modus aus
   navMap.on('dragstart', ()=>{ if(!navDemoTimer) navFollow=false; });
+  // Karte muss bei jeder Grössenänderung (Drehung, Tastatur, Browserleiste ein/aus) neu vermessen werden,
+  // sonst bleibt sie in der alten Pixelgrösse hängen und zeigt nur einen Ausschnitt.
+  const mapEl = el('#navMap');
+  if(mapEl && 'ResizeObserver' in window){
+    new ResizeObserver(()=>{ navMap.resize(); }).observe(mapEl);
+  }
+  window.addEventListener('orientationchange', ()=>{ setTimeout(()=>navMap && navMap.resize(), 250); setTimeout(()=>navMap && navMap.resize(), 600); });
+  window.addEventListener('resize', ()=>{ if(navMap) navMap.resize(); });
+  navUpdateChrome();
   // Standort
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(p=>{
@@ -2822,6 +2840,21 @@ function navBannerSet(icon, dist, text){
   el('#navBannerIcon').textContent = icon;
   el('#navBannerDist').textContent = dist || '';
   el('#navBannerText').textContent = text;
+  navUpdateChrome();
+}
+
+// Blendet Suchleiste/Schnellziele während aktiver Navigation aus (Platz für Karte+Banner)
+// und setzt die Info-Pille an die passende Stelle darunter.
+function navUpdateChrome(){
+  const sb=el('#navSearchBar'), q=el('#navQuick'), info=el('#navInfo');
+  if(!sb||!q||!info) return;
+  const bannerVisible = el('#navBanner') && el('#navBanner').style.display==='flex';
+  sb.style.display = bannerVisible ? 'none' : 'flex';
+  q.style.display  = bannerVisible ? 'none' : 'flex';
+  const topOffset = bannerVisible
+    ? 'calc(env(safe-area-inset-top,0px) + 78px)'
+    : 'calc(env(safe-area-inset-top,0px) + 116px)';
+  info.style.top = topOffset;
 }
 
 function navStepHighlight(idx, done){
@@ -2851,6 +2884,7 @@ function navStop(arrived){
   navDemoStop();
   const b=el('#navBanner'); if(b) b.style.display='none';
   navRenderSteps();
+  navUpdateChrome();
   if(!arrived) el('#navInfo').textContent = 'Navigation beendet.';
 }
 
@@ -2899,6 +2933,7 @@ async function navRouteTo(destination){
   // Alte Navigation zurücksetzen
   navActive=false; navSteps=[]; navStepIdx=0; navWarned={};
   const bn=el('#navBanner'); if(bn) bn.style.display='none';
+  navUpdateChrome();
   el('#navInfo').textContent = '🔎 Suche „'+destination+'"…';
   // Geocode Ziel
   const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(destination)+'&limit=1&addressdetails=1', {headers:{'Accept-Language':'de'}});
@@ -3876,7 +3911,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.3 · Tippfehler-tolerant';
+const JARVIS_VERSION = 'v3.4 · Karte volle Fläche + Auto-Resize';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
