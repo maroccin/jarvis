@@ -2241,11 +2241,43 @@ function matchPlayMusic(low, txt){
   if(!q || /^(musik|etwas|was|irgendwas|songs?|lieder?)$/i.test(q)) q = null;
   return { q };
 }
-function playMusic(song){
+async function playMusic(song){
   const q = song.q || 'lofi hip hop radio beats to relax';
+  // Wenn Spotify verbunden ist und ein konkreter Wunsch genannt wurde: ECHT über Spotify abspielen.
+  if(spToken && song.q){
+    const r = await spPlayQuery(q);
+    if(r.ok){
+      addMsg('chat','🎵 Spiele **'+escHtml(r.name)+'** – '+escHtml(r.artist)+' auf **Spotify**.','jarvis');
+      speak('Ich spiele '+r.name+' auf Spotify.');
+      return;
+    }
+    if(r.noDevice){
+      addMsg('chat','⚠️ Spotify ist verbunden, aber es läuft gerade auf keinem Gerät. Öffne die Spotify-App auf Handy/PC (auch pausiert reicht) für echte Spotify-Wiedergabe. Ich spiele jetzt über YouTube weiter.','jarvis');
+    }
+  }
+  // Fallback: YouTube-Player direkt in Jarvis (kein Spotify verbunden, oder Spotify-Wiedergabe fehlgeschlagen)
   openVideo(q, song.q ? null : 'Entspannungs-Musik');
   addMsg('chat','🎵 Spiele **'+escHtml(song.q||'Musik zum Entspannen')+'** direkt in Jarvis.','jarvis');
   speak('Ich spiele '+(song.q||'Musik')+'.');
+}
+
+// Sucht einen Titel auf Spotify und spielt ihn auf dem aktiven Gerät ab
+async function spPlayQuery(query){
+  try{
+    if(!await spEnsureToken()) return {ok:false};
+    const sr = await fetch('https://api.spotify.com/v1/search?type=track&limit=1&q='+encodeURIComponent(query), {headers:{Authorization:'Bearer '+spToken}});
+    if(!sr.ok) return {ok:false};
+    const sj = await sr.json();
+    const track = sj.tracks && sj.tracks.items && sj.tracks.items[0];
+    if(!track) return {ok:false};
+    const pr = await fetch('https://api.spotify.com/v1/me/player/play', {
+      method:'PUT', headers:{ Authorization:'Bearer '+spToken, 'content-type':'application/json' },
+      body: JSON.stringify({ uris:[track.uri] })
+    });
+    if(pr.status===204){ setTimeout(spPollNow,1200); return { ok:true, name:track.name, artist:(track.artists||[]).map(a=>a.name).join(', ') }; }
+    if(pr.status===404) return { ok:false, noDevice:true };
+    return { ok:false };
+  }catch(e){ return { ok:false }; }
 }
 
 // ---- Eingebetteter Video-/Musik-Player (YouTube IN Jarvis, kein neuer Tab) ----
@@ -2326,17 +2358,24 @@ async function openVideo(query, titleOverride){
       '<iframe id="ytFrame" src="" style="position:absolute;inset:0;width:100%;height:100%;border:none;" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>'+
     '</div>';
   document.body.appendChild(ov); sfxReceive();
-  // Direkt Such-Einbettung verwenden – findet automatisch einbettbares Video
   const frame = document.getElementById('ytFrame'), load = document.getElementById('ytLoading');
   if(!frame) return;
   // Prüfe ob direkter YouTube-Link übergeben wurde
   const directId = ytVideoId(query);
   if(directId){
     frame.src = 'https://www.youtube.com/embed/'+directId+'?autoplay=1&rel=0&modestbranding=1';
+    if(load) setTimeout(()=>{ if(load && load.parentNode) load.remove(); }, 2000);
+    return;
+  }
+  // Echtes, konkretes Video auflösen (zuverlässiger als die Such-Einbettung, die oft "nicht verfügbar" zeigt)
+  const resolvedId = await resolveYouTube(query);
+  if(resolvedId){
+    frame.src = 'https://www.youtube.com/embed/'+resolvedId+'?autoplay=1&rel=0&modestbranding=1';
   } else {
+    // Kein Ergebnis gefunden -> letzter Versuch mit der Such-Einbettung
     frame.src = 'https://www.youtube.com/embed?listType=search&list='+q+'&autoplay=1&rel=0&modestbranding=1';
   }
-  if(load) setTimeout(()=>{ if(load && load.parentNode) load.remove(); }, 2000);
+  if(load) setTimeout(()=>{ if(load && load.parentNode) load.remove(); }, 800);
 }
 function closeVideo(){ const o=document.getElementById('videoOverlay'); if(o) o.remove(); }
 
@@ -3674,7 +3713,7 @@ async function spApi(method, path, body){
 }
 
 async function spotifyPlay(query){
-  // Musik immer direkt in Jarvis via YouTube abspielen
+  // playMusic() versucht bei genanntem Titel automatisch zuerst echtes Spotify, dann YouTube als Fallback
   if(query){
     playMusic({q: query});
   } else {
@@ -4253,7 +4292,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.4 · Start-Knopf immer sichtbar';
+const JARVIS_VERSION = 'v5.5 · Echtes Spotify + besseres YouTube';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
