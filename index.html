@@ -2988,7 +2988,7 @@ async function haConnect(){
   if(!haToken){ haStatus('Bitte den Token einfügen.'); return; }
   localStorage.setItem('ha_url', haUrl); localStorage.setItem('ha_token', haToken);
   haStatus('Verbinde…');
-  try{ const n = await haLoad(); haStatus('✅ Verbunden – '+n+' Geräte gefunden! Schau im Bereich Smart Home.'); }
+  try{ const n = await haLoad(); haStatus('✅ Verbunden – '+n+' Geräte gefunden! Schau im Bereich Smart Home.'); checkSecurityAlerts(); }
   catch(e){ /* status schon gesetzt */ }
 }
 function haIsOn(e){ return e.state==='on'||e.state==='playing'||e.state==='open'||e.state==='home'||e.state==='unlocked'; }
@@ -4201,6 +4201,39 @@ function renderPresenceCard(){
     return '<div class="climrow"><span class="cname">'+(home?'🟢 ':'⚪ ')+escHtml(s.name)+'</span><span class="ctemp">'+(home?'Zuhause':'Unterwegs')+'</span></div>';
   }).join('');
 }
+// ---- Sicherheits-Meldungen: vergessene Lichter + Bewegung obwohl niemand zuhause ----
+// Läuft nur solange Jarvis im Browser offen ist (keine echten Push-Benachrichtigungen ohne eigenen Server).
+let secAlertedLights = false, secAlertedMotion = false;
+function checkSecurityAlerts(){
+  const personIds = Object.keys(haSensors).filter(id=>haSensors[id].domain==='person');
+  if(!personIds.length) return;   // ohne Personen-Tracking keine verlässliche Aussage möglich
+  const anyoneHome = personIds.some(id=>haSensors[id].state==='home');
+
+  // Vergessene Lichter: niemand zuhause, aber Licht/Steckdose an
+  const onDevices = Object.values(haEntities).filter(e=>(e.domain==='light'||e.domain==='switch') && haIsOn(e));
+  if(!anyoneHome && onDevices.length){
+    if(!secAlertedLights){
+      secAlertedLights = true;
+      const names = onDevices.map(e=>e.name).join(', ');
+      addMsg('chat','💡 **Vergessenes Licht?** Niemand ist zuhause, aber '+onDevices.length+' Gerät(e) sind noch an: '+escHtml(names)+'. Soll ich alles ausschalten? Sag „alles aus".','jarvis');
+      speak('Achtung, es sind noch Geräte an, obwohl niemand zuhause ist.');
+    }
+  } else { secAlertedLights = false; }
+
+  // Ungewöhnliche Aktivität: Bewegung erkannt, obwohl niemand zuhause sein sollte
+  const motionIds = Object.keys(haSensors).filter(id=>haSensors[id].deviceClass==='motion' && haSensors[id].state==='on');
+  if(!anyoneHome && motionIds.length){
+    if(!secAlertedMotion){
+      secAlertedMotion = true;
+      const names = motionIds.map(id=>haSensors[id].name).join(', ');
+      addMsg('chat','🚨 **Ungewöhnliche Aktivität:** Bewegung erkannt (' +escHtml(names)+ '), obwohl laut Anwesenheit niemand zuhause sein sollte!','jarvis');
+      speak('Achtung! Bewegung erkannt, obwohl niemand zuhause sein sollte.');
+    }
+  } else { secAlertedMotion = false; }
+}
+// Sensordaten regelmässig neu laden, damit Live-Kacheln + Sicherheits-Meldungen aktuell bleiben
+setInterval(()=>{ if(haToken) haLoad().then(checkSecurityAlerts).catch(()=>{}); }, 60000);
+
 function renderCamCard(){
   const box=el('#camBox'), nm=el('#camName'); if(!box) return;
   const ids=Object.keys(haEntities).filter(id=>haEntities[id].domain==='camera');
@@ -4472,7 +4505,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v5.8 · Live-Dashboard (Energie/Akku/Anwesenheit)';
+const JARVIS_VERSION = 'v5.9 · Sicherheits-Meldungen';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
@@ -4503,7 +4536,7 @@ setInterval(renderChips, 30*60*1000);   // Schnell-Buttons an Tageszeit anpassen
 setInterval(renderAlerts, 60*1000);     // Meldungen aktuell halten (Timer/Lampen/Wetter)
 if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
-if(haToken) haLoad();          // Home-Assistant-Geräte laden
+if(haToken) haLoad().then(checkSecurityAlerts).catch(()=>{});          // Home-Assistant-Geräte laden
 updateWakeBtn(); updateShopifyBar(); applyName(); applyBgPattern(localStorage.getItem('jarvis_bg')||'grid');
 if(wakeMode && SR && !IS_IOS){ liveMode=true; speakOn=true; updateLiveBtn(); setTimeout(startRecog,1500); }
 setInterval(refreshCams, 4000);   // Kamera-Live-Bilder aktualisieren
