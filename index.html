@@ -248,6 +248,7 @@
   #view-money   { background: radial-gradient(820px 520px at 28% 6%, rgba(255,177,62,0.11), transparent 62%); }
   #view-shop    { background: radial-gradient(820px 520px at 28% 6%, rgba(155,92,255,0.12), transparent 62%); }
   #view-research{ background: radial-gradient(820px 520px at 28% 6%, rgba(53,200,255,0.12), transparent 62%); }
+  #view-marketing{ background: radial-gradient(820px 520px at 28% 6%, rgba(255,92,150,0.12), transparent 62%); }
   /* Grosses, leise schwebendes Symbol-Wasserzeichen */
   .view::after { position: absolute; right: 4%; top: 18%; font-size: 230px; opacity: 0.05; pointer-events: none; z-index: 0; animation: floaty 9s ease-in-out infinite; }
   #view-chat::after    { content:"💬"; }
@@ -256,6 +257,7 @@
   #view-money::after   { content:"💰"; }
   #view-shop::after    { content:"🛒"; }
   #view-research::after{ content:"🔍"; }
+  #view-marketing::after{ content:"📣"; }
 
   /* Chat-Bereiche */
   .chat { flex: 1; overflow-y: auto; padding: 16px 26px 8px; display: flex; flex-direction: column; gap: 14px; }
@@ -530,6 +532,7 @@
       <div class="navbtn" data-view="money" onclick="switchView('money')"><span class="ic">💰</span> Geld verdienen</div>
       <div class="navbtn" data-view="shop" onclick="switchView('shop')"><span class="ic">🛒</span> Dropshipping</div>
       <div class="navbtn" data-view="research" onclick="switchView('research')"><span class="ic">🔍</span> Produktrecherche</div>
+      <div class="navbtn" data-view="marketing" onclick="switchView('marketing')"><span class="ic">📣</span> Marketing</div>
       <div class="navbtn" data-view="nav" onclick="switchView('nav')"><span class="ic">🗺️</span> Navigation</div>
       <div class="navbtn" onclick="carModeEnter()"><span class="ic">🚗</span> Auto-Modus</div>
     </div>
@@ -851,6 +854,26 @@
       </div>
     </div>
 
+    <!-- Marketing-Agent -->
+    <div class="view" id="view-marketing">
+      <div class="viewhead"><h2>📣 Marketing <span style="font-size:11px;color:var(--green);border:1px solid rgba(62,224,122,0.4);padding:2px 8px;border-radius:12px;">🌐 LIVE</span></h2><p>Werbetexte, Social-Media-Posts und Kampagnen – fertig zum Nutzen.</p></div>
+      <div class="chat" id="chat-marketing"></div>
+      <div class="chips" id="chips-marketing">
+        <div class="chip" onclick="ask('marketing','Schreib mir 5 Instagram/TikTok-Post-Ideen für [PRODUKT/THEMA]: pro Idee ein Hook-Satz für die ersten 2 Sekunden, kurzer Ablauf, Caption mit Call-to-Action, 5 passende Hashtags.')">📱 Social-Media-Posts</div>
+        <div class="chip" onclick="ask('marketing','Erstelle eine komplette Facebook/Instagram-Werbeanzeige für [PRODUKT]: Headline (max 40 Zeichen), Primärtext, Call-to-Action-Button-Text, 3 Varianten für A/B-Test, Zielgruppen-Vorschlag (Alter, Interessen), Tagesbudget-Empfehlung.')">📣 Werbeanzeige</div>
+        <div class="chip" onclick="ask('marketing','Erstelle mir einen 7-Tage-Content-Plan für [THEMA/PRODUKT] auf Instagram: pro Tag ein Post-Thema, Format (Reel/Foto/Story), kurzer Inhalt-Vorschlag. Abwechslungsreich zwischen Verkauf, Mehrwert und Unterhaltung.')">📅 7-Tage-Content-Plan</div>
+        <div class="chip" onclick="ask('marketing','Schreib mir einen E-Mail-Newsletter für [PRODUKT/ANLASS]: knackige Betreffzeile (2 Varianten), persönliche Anrede, Haupttext der neugierig macht, klarer Call-to-Action. Auf Deutsch, nicht plump verkäuferisch.')">📧 Newsletter</div>
+        <div class="chip" onclick="ask('marketing','Formuliere 3 knackige Slogans/Taglines für [MARKE/PRODUKT] – einprägsam, auf Deutsch, unter 8 Wörtern. Erklär kurz warum jeder funktioniert.')">✨ Slogan finden</div>
+        <div class="chip" onclick="ask('marketing','Erstelle mir ein Konzept für eine Launch-Kampagne für [PRODUKT]: Ziel, Zielgruppe, Kanäle (welche und warum), Zeitplan über 2 Wochen (Teaser → Launch → Nachfass), Budget-Aufteilung in %.')">🚀 Launch-Kampagne</div>
+        <div class="chip" onclick="ask('marketing','Analysiere kurz was gute Werbung/Content in der Nische [NISCHE] gerade macht – nutze Web-Suche für aktuelle Beispiele. Gib mir 3 konkrete Ideen die ich davon übernehmen kann.')">🔎 Konkurrenz-Content checken</div>
+      </div>
+      <div class="bar">
+        <button class="btn mic" data-mic onclick="toggleMic('marketing')">🎤</button>
+        <input data-input placeholder="Produkt/Thema für Werbung eingeben…" onkeydown="if(event.key==='Enter')send('marketing')">
+        <button class="btn sendb" onclick="send('marketing')">➤</button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Timer-Anzeige -->
@@ -1022,7 +1045,7 @@ const sfxListen  = ()=>{ beep(520, 880, 0.12, 'sine', 0.05); };
 const sfxWake    = ()=>{ beep(660,1320,0.12,'sine',0.07); setTimeout(()=>beep(880,1760,0.10,'sine',0.06),100); };
 
 // Eigener Gesprächsverlauf pro Bereich → bleibt aufgeräumt
-const histories = { chat: [], trading: [], money: [], shop: [], research: [] };
+const histories = { chat: [], trading: [], money: [], shop: [], research: [], marketing: [] };
 
 const BASE = ()=>`Du bist ${jName}, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis.`;
 const PROMPTS = {
@@ -1030,7 +1053,8 @@ const PROMPTS = {
   trading: ()=>BASE() + ` Fokus: Börse & Trading. Nenne konkrete Aktien/Coins mit aktuellen Kursen (nutze die Web-Suche für Live-Daten!) und eine klare Einschätzung. Gib Einstiegs- und Stop-Loss-Ideen. Risiko nur in EINEM kurzen Satz am Ende. Keine ausweichende "frag-einen-Berater"-Predigt.`,
   money: ()=>BASE() + ` Fokus: Geld verdienen. Sei direkt, versiert und konkret. Liefere fertige PLÄNE und Schritt-für-Schritt-Anleitungen mit echten Zahlen: Aufwand, möglicher Verdienst (pro Tag/Woche) und der allererste Schritt, den Kamil HEUTE machen kann. Nutze die Web-Suche für aktuelle Möglichkeiten. KEINE entmutigenden Floskeln wie "online kann man nicht einfach Geld verdienen" – zeig stattdessen genau WIE es geht. Denke breit: Skills/Dienstleistungen verkaufen, Flipping, Online-Gigs, lokale Jobs, kleine Geschäftsideen.`,
   shop: ()=>BASE() + ` Du bist Kamils persönlicher Dropshipping-Experte. Dein Ziel: ihm helfen, schnell einen profitablen Online-Shop aufzubauen. Regeln: 1) Immer konkret – echte Produktnamen, echte Preise, echte Margen. 2) Formatiere Produkte als Tabelle oder klare Liste. 3) Nutze Web-Suche für aktuelle Trends, AliExpress-Preise und Wettbewerb. 4) Schlage immer nächste Schritte vor. 5) Wenn Kamil eine Nische nennt: erstelle sofort einen kompletten Shop-Plan mit 5-8 Produkten, Einkaufspreis, Verkaufspreis, Marge in % und Lieferant (AliExpress/CJ/Spocket). 6) Schreibe Produkttexte verkaufsstark und auf Deutsch. 7) Kenne die Shopify-Plattform gut – gib konkrete Setup-Tipps.`,
-  research: ()=>BASE() + ` Du bist Kamils Produktrecherche-Agent. Aufgabe: Produkte, Nischen und Märkte analysieren – unabhängig davon, ob es später für einen eigenen Shop, Weiterverkauf oder privaten Bedarf ist. Regeln: 1) Nutze immer die Web-Suche für aktuelle Trends/Preise/Wettbewerb, keine veralteten Vermutungen. 2) Sei ehrlich und nüchtern – wenn eine Idee schlecht ist, sag es klar mit Begründung, statt schönzureden. 3) Strukturiere Antworten mit Zwischenüberschriften oder Tabellen, nicht als Textwand. 4) Gib am Ende JEDER Analyse eine klare Handlungsempfehlung in einem Satz. 5) Denke breiter als nur Dropshipping: auch Second-Hand-Arbitrage, lokale Marktlücken, Dienstleistungs-Nischen zählen als "Produkt".`
+  research: ()=>BASE() + ` Du bist Kamils Produktrecherche-Agent. Aufgabe: Produkte, Nischen und Märkte analysieren – unabhängig davon, ob es später für einen eigenen Shop, Weiterverkauf oder privaten Bedarf ist. Regeln: 1) Nutze immer die Web-Suche für aktuelle Trends/Preise/Wettbewerb, keine veralteten Vermutungen. 2) Sei ehrlich und nüchtern – wenn eine Idee schlecht ist, sag es klar mit Begründung, statt schönzureden. 3) Strukturiere Antworten mit Zwischenüberschriften oder Tabellen, nicht als Textwand. 4) Gib am Ende JEDER Analyse eine klare Handlungsempfehlung in einem Satz. 5) Denke breiter als nur Dropshipping: auch Second-Hand-Arbitrage, lokale Marktlücken, Dienstleistungs-Nischen zählen als "Produkt".`,
+  marketing: ()=>BASE() + ` Du bist Kamils Marketing-Agent. Aufgabe: fertige, sofort nutzbare Werbetexte, Social-Media-Inhalte und Kampagnen-Konzepte liefern. Regeln: 1) Liefere immer FERTIGE Texte zum direkten Kopieren, keine vagen Vorschläge oder Gerüste. 2) Auf Deutsch, außer explizit anders gewünscht. 3) Wenn ein Produkt/Thema nicht genannt wurde, frag knapp nach statt zu raten. 4) Nutze Web-Suche für aktuelle Trends/Formate/Konkurrenzbeispiele, wenn relevant. 5) Ton: verkaufsstark aber nicht plump oder reißerisch – überzeugend durch Klarheit statt durch Übertreibung. 6) Biete bei Werbetexten wenn möglich 2-3 Varianten zum Auswählen an.`
 };
 // Erklär-Stile pro Bereich
 const levels = { trading:'normal', money:'normal' };
@@ -3948,7 +3972,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v3.7 · Produktrecherche-Agent';
+const JARVIS_VERSION = 'v3.8 · Marketing-Agent';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
