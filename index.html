@@ -1475,7 +1475,12 @@ function portfolioToggle(){
   box.style.display = open ? 'none' : 'flex';
   if(!open) portfolioRender();
 }
+const METALS = { gold:'XAU', silber:'XAG', silver:'XAG', platin:'XPT', platinum:'XPT', palladium:'XPD' };
 async function portfolioAdd(){
+  const kind = prompt('Was willst du hinzufügen?\n1 = Krypto (Bitcoin, Ethereum, …)\n2 = Edelmetall (Gold, Silber, Platin, Palladium)\n3 = Sonstiges (Öl, Aktien, ETFs, … – Preis pflegst du selbst)\n\nZahl eingeben:');
+  if(!kind) return;
+  if(kind.trim()==='2') return portfolioAddMetal();
+  if(kind.trim()==='3') return portfolioAddManual();
   const query = prompt('Welches Krypto (Name oder Symbol, z.B. Bitcoin oder BTC)?');
   if(!query) return;
   let coin;
@@ -1485,17 +1490,10 @@ async function portfolioAdd(){
     coin = j.coins && j.coins[0];
   }catch(e){}
   if(!coin){ alert('„'+query+'" nicht gefunden. Versuch den vollen Namen (z.B. "Bitcoin" statt "BTC").'); return; }
-  const amountStr = prompt('Wie viel '+coin.symbol.toUpperCase()+' hältst du (Menge)?');
-  const amount = parseFloat((amountStr||'').replace(',','.'));
-  if(!amount || amount<=0) return;
-  const buyStr = prompt('Zu welchem Kaufpreis pro Stück (USD)? (Leer lassen = aktueller Kurs wird genommen)');
-  const buyPrice = buyStr ? parseFloat(buyStr.replace(',','.')) : null;
-  const slStr = prompt('Stop-Loss Preis (USD)? Leer lassen = kein Alarm.');
-  const stopLoss = slStr ? parseFloat(slStr.replace(',','.')) : null;
-  const tpStr = prompt('Take-Profit Preis (USD)? Leer lassen = kein Alarm.');
-  const takeProfit = tpStr ? parseFloat(tpStr.replace(',','.')) : null;
+  const amount = portfolioAskAmount(coin.symbol.toUpperCase()); if(!amount) return;
+  const { buyPrice, stopLoss, takeProfit } = portfolioAskLimits();
   portfolio.push({
-    id: Date.now()+'', coingeckoId: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name,
+    id: Date.now()+'', type:'crypto', coingeckoId: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name,
     amount, buyPrice, stopLoss, takeProfit, alertedSL:false, alertedTP:false
   });
   savePortfolio();
@@ -1504,10 +1502,60 @@ async function portfolioAdd(){
   portfolioPollPrices();
   addMsg('trading','➕ **'+coin.name+'** ('+coin.symbol.toUpperCase()+') zum Portfolio hinzugefügt. Ich überwache den Kurs live.','jarvis');
 }
+function portfolioAskAmount(unitLabel){
+  const amountStr = prompt('Wie viel '+unitLabel+' hältst du (Menge)?');
+  const amount = parseFloat((amountStr||'').replace(',','.'));
+  return (!amount || amount<=0) ? null : amount;
+}
+function portfolioAskLimits(){
+  const buyStr = prompt('Zu welchem Kaufpreis pro Stück (USD)? (Leer lassen = aktueller Kurs wird genommen)');
+  const buyPrice = buyStr ? parseFloat(buyStr.replace(',','.')) : null;
+  const slStr = prompt('Stop-Loss Preis (USD)? Leer lassen = kein Alarm.');
+  const stopLoss = slStr ? parseFloat(slStr.replace(',','.')) : null;
+  const tpStr = prompt('Take-Profit Preis (USD)? Leer lassen = kein Alarm.');
+  const takeProfit = tpStr ? parseFloat(tpStr.replace(',','.')) : null;
+  return { buyPrice, stopLoss, takeProfit };
+}
+async function portfolioAddMetal(){
+  const query = (prompt('Welches Edelmetall? (Gold, Silber, Platin oder Palladium)')||'').trim().toLowerCase();
+  const code = METALS[query];
+  if(!code){ alert('Kenne nur Gold, Silber, Platin, Palladium.'); return; }
+  const amount = portfolioAskAmount('Unzen'); if(!amount) return;
+  const { buyPrice, stopLoss, takeProfit } = portfolioAskLimits();
+  portfolio.push({
+    id: Date.now()+'', type:'metal', metalCode: code, symbol: code, name: query.charAt(0).toUpperCase()+query.slice(1),
+    amount, buyPrice, stopLoss, takeProfit, alertedSL:false, alertedTP:false
+  });
+  savePortfolio(); el('#portfolioList').style.display='flex'; portfolioRender(); portfolioPollPrices();
+  addMsg('trading','➕ **'+query+'** zum Portfolio hinzugefügt (Preis pro Feinunze in USD).','jarvis');
+}
+function portfolioAddManual(){
+  const name = prompt('Was ist es (z.B. "Öl WTI", "Apple Aktie", "S&P 500 ETF")?');
+  if(!name) return;
+  const amount = portfolioAskAmount('Stück/Einheiten'); if(!amount) return;
+  const priceStr = prompt('Aktueller Preis pro Stück (USD)?');
+  const price = parseFloat((priceStr||'').replace(',','.'));
+  if(!price || price<=0) return;
+  const { buyPrice, stopLoss, takeProfit } = portfolioAskLimits();
+  const id = Date.now()+'';
+  portfolio.push({ id, type:'manual', symbol:name, name, amount, buyPrice, stopLoss, takeProfit, alertedSL:false, alertedTP:false });
+  portfolioPrices['manual:'+id] = price;
+  savePortfolio(); el('#portfolioList').style.display='flex'; portfolioRender();
+  addMsg('trading','➕ **'+name+'** zum Portfolio hinzugefügt. Preis musst du selbst aktuell halten (Button „🔄" bei der Position) – dafür gibt es keine kostenlose Live-Quelle ohne API-Key.','jarvis');
+}
+function portfolioUpdateManualPrice(id){
+  const p = portfolio.find(x=>x.id===id); if(!p) return;
+  const priceStr = prompt('Neuer Preis für „'+p.name+'" (USD)?', portfolioPrices['manual:'+id]||'');
+  const price = parseFloat((priceStr||'').replace(',','.'));
+  if(!price || price<=0) return;
+  portfolioPrices['manual:'+id] = price;
+  portfolioRender(); portfolioCheckAlerts();
+}
 function portfolioRemove(id){
   portfolio = portfolio.filter(p=>p.id!==id);
   savePortfolio(); portfolioRender();
 }
+function priceKey(p){ return p.type==='metal' ? 'metal:'+p.metalCode : (p.type==='manual' ? 'manual:'+p.id : p.coingeckoId); }
 function portfolioBuyLink(symbol){
   return 'https://www.binance.com/en/trade/'+encodeURIComponent(symbol)+'_USDT';
 }
@@ -1543,29 +1591,31 @@ async function portfolioRender(){
   const btn = el('#portfolioToggleBtn'); if(btn) btn.textContent = '📊 Portfolio ('+portfolio.length+')';
   if(!portfolio.length){ box.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">Noch keine Position. Tippe „➕ Position hinzufügen".</div>'; return; }
   box.innerHTML = portfolio.map(p=>{
-    const price = portfolioPrices[p.coingeckoId];
+    const price = portfolioPrices[priceKey(p)];
     const pl = (price && p.buyPrice) ? (((price-p.buyPrice)/p.buyPrice)*100) : null;
     const plColor = pl==null ? 'var(--muted)' : (pl>=0 ? 'var(--green)' : '#ff5c5c');
     const plTxt = pl==null ? '' : (pl>=0?'+':'')+pl.toFixed(1)+'%';
+    const unit = p.type==='metal' ? 'Unzen' : (p.type==='manual' ? 'Stück' : 'Stück');
     return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card);flex-wrap:wrap;">'+
       '<div style="flex:1;min-width:120px;">'+
         '<div style="font-weight:700;">'+escHtml(p.name)+' <span style="color:var(--muted);font-weight:400;">'+p.symbol+'</span></div>'+
-        '<div style="font-size:12px;color:var(--muted);">'+p.amount+' Stück'+(p.buyPrice?(' · Kauf: $'+p.buyPrice):'')+'</div>'+
+        '<div style="font-size:12px;color:var(--muted);">'+p.amount+' '+unit+(p.buyPrice?(' · Kauf: $'+p.buyPrice):'')+'</div>'+
       '</div>'+
-      '<div id="spark-'+p.id+'" style="min-width:80px;">'+sparklineSvg(portfolioSparklines[p.coingeckoId])+'</div>'+
+      (p.type==='crypto' ? '<div id="spark-'+p.id+'" style="min-width:80px;">'+sparklineSvg(portfolioSparklines[p.coingeckoId])+'</div>' : '')+
       '<div style="text-align:right;min-width:90px;">'+
         '<div style="font-weight:700;">'+(price? '$'+(price<1?price.toPrecision(3):price.toFixed(2)) : '…')+'</div>'+
         (plTxt? '<div style="font-size:12px;color:'+plColor+';font-weight:700;">'+plTxt+'</div>' : '')+
       '</div>'+
       (p.stopLoss||p.takeProfit ? '<div style="font-size:11px;color:var(--muted);width:100%;">'+(p.stopLoss?'🛑 SL $'+p.stopLoss+' ':'')+(p.takeProfit?'🎯 TP $'+p.takeProfit:'')+'</div>' : '')+
       '<div style="display:flex;gap:4px;flex-wrap:wrap;">'+
-        portfolioBuyLinks(p.symbol).map(l=>'<a href="'+l.url+'" target="_blank" style="padding:6px 10px;border-radius:8px;background:var(--accent);color:#000;font-size:11px;font-weight:700;text-decoration:none;">'+l.label+'</a>').join('')+
+        (p.type==='crypto' ? portfolioBuyLinks(p.symbol).map(l=>'<a href="'+l.url+'" target="_blank" style="padding:6px 10px;border-radius:8px;background:var(--accent);color:#000;font-size:11px;font-weight:700;text-decoration:none;">'+l.label+'</a>').join('') :
+          '<button onclick="portfolioUpdateManualPrice(\''+p.id+'\')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:11px;">🔄 Preis</button>')+
       '</div>'+
       '<button onclick="portfolioRemove(\''+p.id+'\')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12px;">✕</button>'+
     '</div>';
   }).join('');
   // Mini-Charts pro einzigartigem Coin nachladen, ohne die Anzeige zu blockieren.
-  const ids = [...new Set(portfolio.map(p=>p.coingeckoId))];
+  const ids = [...new Set(portfolio.filter(p=>p.type==='crypto').map(p=>p.coingeckoId))];
   ids.forEach(id=>{
     portfolioFetchSparkline(id).then(prices=>{
       portfolio.filter(p=>p.coingeckoId===id).forEach(p=>{
@@ -1576,11 +1626,25 @@ async function portfolioRender(){
 }
 async function portfolioPollPrices(){
   if(!portfolio.length) return;
-  const ids = [...new Set(portfolio.map(p=>p.coingeckoId))].join(',');
+  const cryptoIds = [...new Set(portfolio.filter(p=>p.type==='crypto').map(p=>p.coingeckoId))];
+  const metalCodes = [...new Set(portfolio.filter(p=>p.type==='metal').map(p=>p.metalCode))];
   try{
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+ids+'&vs_currencies=usd');
-    const j = await r.json();
-    portfolio.forEach(p=>{ if(j[p.coingeckoId]) portfolioPrices[p.coingeckoId] = j[p.coingeckoId].usd; });
+    if(cryptoIds.length){
+      const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+cryptoIds.join(',')+'&vs_currencies=usd');
+      const j = await r.json();
+      cryptoIds.forEach(id=>{ if(j[id]) portfolioPrices[id] = j[id].usd; });
+    }
+    if(metalCodes.length){
+      try{
+        const r2 = await fetch('https://api.metals.live/v1/spot');
+        const j2 = await r2.json();
+        metalCodes.forEach(code=>{
+          const key = { XAU:'gold', XAG:'silver', XPT:'platinum', XPD:'palladium' }[code];
+          const entry = (j2||[]).find(e=>e && e[key]!=null);
+          if(entry) portfolioPrices['metal:'+code] = entry[key];
+        });
+      } catch(e){ /* Edelmetall-Quelle kurz weg - beim naechsten Poll erneut versuchen */ }
+    }
     if(el('#portfolioList').style.display === 'flex') portfolioRender();
     portfolioCheckAlerts();
     tradingAutoCheck();
@@ -1606,16 +1670,17 @@ async function tradingAutoCheck(){
   if(!tradingAutoOn || !portfolio.length || !apiKey || tradingAutoBusy) return;
   const moved = [];
   portfolio.forEach(p=>{
-    const price = portfolioPrices[p.coingeckoId]; if(!price) return;
-    const last = tradingAutoLastPrices[p.coingeckoId];
+    const key = priceKey(p);
+    const price = portfolioPrices[key]; if(!price) return;
+    const last = tradingAutoLastPrices[key];
     if(last && Math.abs((price-last)/last) >= 0.03) moved.push(p);
-    tradingAutoLastPrices[p.coingeckoId] = price;
+    tradingAutoLastPrices[key] = price;
   });
   if(!moved.length) return;
   tradingAutoBusy = true;
   try{
     for(const p of moved){
-      const price = portfolioPrices[p.coingeckoId];
+      const price = portfolioPrices[priceKey(p)];
       const data = await callClaude({ model, max_tokens:300,
         system:'Du bist ein autonomer Trading-Wächter für EINE einzelne Position. Antworte in GENAU diesem Format: Erste Zeile nur eines der Worte KAUFEN, VERKAUFEN oder NICHTS (deine Handlungsempfehlung). Danach ab Zeile 2: falls nicht NICHTS, max 2 Sätze auf Deutsch mit kurzer Begründung. Sei zurückhaltend mit KAUFEN/VERKAUFEN - nur bei wirklich klarer Lage, sonst NICHTS.',
         messages:[{ role:'user', content:p.name+' ('+p.symbol+'): aktuell $'+price+(p.buyPrice?', Kauf $'+p.buyPrice:'')+(p.stopLoss?', SL $'+p.stopLoss:'')+(p.takeProfit?', TP $'+p.takeProfit:'')+'. Bewertet die aktuelle Lage nach der jüngsten Kursbewegung.' }] });
@@ -1626,7 +1691,7 @@ async function tradingAutoCheck(){
       const label = action==='VERKAUFEN' ? 'verkaufen' : 'nachkaufen';
       const wrap = addMsg('trading', '🤖 **Autonome Beobachtung – '+p.name+':** '+(reason||'Empfehlung: '+label+'.'), 'jarvis');
       speak(p.name+': '+(reason||('Ich würde '+label+'.')));
-      addTradeActionButtons(wrap, p.coingeckoId, p.symbol, p.name, action==='VERKAUFEN' ? 'sell' : 'buy');
+      if(p.type==='crypto') addTradeActionButtons(wrap, p.coingeckoId, p.symbol, p.name, action==='VERKAUFEN' ? 'sell' : 'buy');
     }
   } catch(e){ /* stiller Fehlschlag - beim naechsten signifikanten Sprung erneut versuchen */ }
   finally { tradingAutoBusy = false; }
@@ -1667,15 +1732,16 @@ function tradingConfirmAction(action, coingeckoId, symbol, name){
 function portfolioCheckAlerts(){
   let changed = false;
   portfolio.forEach(p=>{
-    const price = portfolioPrices[p.coingeckoId]; if(!price) return;
+    const price = portfolioPrices[priceKey(p)]; if(!price) return;
+    const link = p.type==='crypto' ? '\n\n[🔗 Jetzt auf Binance verkaufen]('+portfolioBuyLink(p.symbol)+')' : '';
     if(p.stopLoss && !p.alertedSL && price <= p.stopLoss){
       p.alertedSL = true; changed = true;
-      addMsg('trading','🛑 **Stop-Loss erreicht:** '+p.name+' steht bei $'+price+' (Limit: $'+p.stopLoss+'). Zeit zu handeln?\n\n[🔗 Jetzt auf Binance verkaufen]('+portfolioBuyLink(p.symbol)+')','jarvis');
+      addMsg('trading','🛑 **Stop-Loss erreicht:** '+p.name+' steht bei $'+price+' (Limit: $'+p.stopLoss+'). Zeit zu handeln?'+link,'jarvis');
       speak('Achtung, Stop Loss für '+p.name+' erreicht.');
     }
     if(p.takeProfit && !p.alertedTP && price >= p.takeProfit){
       p.alertedTP = true; changed = true;
-      addMsg('trading','🎯 **Take-Profit erreicht:** '+p.name+' steht bei $'+price+' (Ziel: $'+p.takeProfit+'). Gewinn mitnehmen?\n\n[🔗 Jetzt auf Binance verkaufen]('+portfolioBuyLink(p.symbol)+')','jarvis');
+      addMsg('trading','🎯 **Take-Profit erreicht:** '+p.name+' steht bei $'+price+' (Ziel: $'+p.takeProfit+'). Gewinn mitnehmen?'+link,'jarvis');
       speak('Take Profit für '+p.name+' erreicht.');
     }
   });
@@ -5415,7 +5481,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.6 · Trading: Ein-Klick Kauf-/Verkauf-Bestätigung';
+const JARVIS_VERSION = 'v8.7 · Portfolio: Gold/Silber/Platin + Öl/Aktien manuell';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
