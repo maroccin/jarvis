@@ -2035,6 +2035,8 @@ function handleVoice(txt){
   // Spotify steuern
   const spCmd = matchSpotify(low, txt);
   if(spCmd){
+    // busy wird NICHT hier zurückgesetzt - die Spotify-Funktionen rufen resumeAfter() selbst
+    // auf, sobald ihre (asynchrone) Aktion wirklich abgeschlossen ist.
     if(spCmd.cmd==='pause') spotifyPause();
     else if(spCmd.cmd==='resume') spotifyPlay(null);
     else if(spCmd.cmd==='next') spotifyNext();
@@ -2042,11 +2044,12 @@ function handleVoice(txt){
     else if(spCmd.cmd==='vol') spotifyVolume(spCmd.delta);
     else if(spCmd.cmd==='nowplaying') spotifyNowPlaying();
     else if(spCmd.cmd==='play') spotifyPlay(spCmd.q);
-    busy=false; return;
+    return;
   }
-  // Musik abspielen ("Spiele ... von ...")
+  // Musik abspielen ("Spiele ... von ...") - playMusic() spricht am Ende immer selbst (speak()),
+  // das erledigt busy/resumeAfter bereits korrekt zum richtigen Zeitpunkt.
   const song = matchPlayMusic(low, txt);
-  if(song){ playMusic(song); busy=false; return; }
+  if(song){ playMusic(song); return; }
   // Medien öffnen
   const media = matchMedia(low);
   if(media){ openMedia(media); return; }
@@ -2324,7 +2327,11 @@ function matchWeatherCity(low){
   return null;
 }
 async function doWeatherCity(city){
-  busy=false; switchView('chat');
+  // WICHTIG: "busy" bleibt bis zur fertigen (gesprochenen) Antwort aktiv - NICHT hier schon
+  // zurücksetzen. Sonst hält restartRecogWhenQuiet() die Netzwerk-Wartezeit für "fertig" und
+  // startet das Mikro, WÄHREND die Wetterdaten noch laden (Jarvis spricht dann erst später) -
+  // genau das liess das Live-Gespräch nach der ersten Frage "aussteigen".
+  switchView('chat');
   try{
     let lat, lon, locName;
     if(city === '__loc__'){
@@ -2339,7 +2346,7 @@ async function doWeatherCity(city){
     } else {
       const g = await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=de');
       const gj = await g.json();
-      if(!gj.results || !gj.results.length){ addMsg('chat','🌤️ Ort „'+escHtml(city)+'" nicht gefunden.','jarvis'); return; }
+      if(!gj.results || !gj.results.length){ speak('Ort „'+city+'" habe ich nicht gefunden.'); addMsg('chat','🌤️ Ort „'+escHtml(city)+'" nicht gefunden.','jarvis'); return; }
       lat=gj.results[0].latitude; lon=gj.results[0].longitude; locName=gj.results[0].name;
     }
     const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&timezone=auto');
@@ -2358,7 +2365,7 @@ async function doWeatherCity(city){
     const txt = wCur[0]+' Aktuell bei **'+locName+'**: **'+t+'°**, '+wCur[1]+'.\n\n'+forecast;
     addMsg('chat', txt, 'jarvis');
     speak('Aktuell '+t+' Grad, '+wCur[1]+'. Morgen '+Math.round(j.daily.temperature_2m_max[1])+' Grad.');
-  }catch(e){ addMsg('chat','🌤️ Wetter konnte gerade nicht geladen werden.','jarvis'); }
+  }catch(e){ speak('Das Wetter konnte ich gerade nicht laden.'); addMsg('chat','🌤️ Wetter konnte gerade nicht geladen werden.','jarvis'); }
 }
 
 // ---- Einheiten umrechnen (offline) ----
@@ -2394,7 +2401,8 @@ function matchCurrency(low){
   return { amt, from, to };
 }
 async function doCurrency(c){
-  busy=false; switchView('chat');
+  // "busy" bewusst NICHT hier zurücksetzen - siehe Kommentar in doWeatherCity().
+  switchView('chat');
   try{
     const r = await fetch('https://open.er-api.com/v6/latest/'+c.from);
     const j = await r.json();
@@ -2404,7 +2412,7 @@ async function doCurrency(c){
     const txt = c.amt+' '+c.from+' = **'+fmtNum(res)+' '+c.to+'**  _(Kurs '+fmtNum(rate)+')_';
     addMsg('chat', '💱 '+txt, 'jarvis');
     speak(c.amt+' '+c.from+' sind '+fmtNum(res)+' '+c.to+'.');
-  }catch(e){ addMsg('chat','💱 Konnte den Wechselkurs gerade nicht laden. 😕','jarvis'); }
+  }catch(e){ speak('Den Wechselkurs konnte ich gerade nicht laden.'); addMsg('chat','💱 Konnte den Wechselkurs gerade nicht laden. 😕','jarvis'); }
 }
 
 // ---- Musik abspielen (öffnet Spotify / YouTube mit dem Song) ----
@@ -3916,16 +3924,20 @@ async function spotifyPlay(query){
     playMusic({q: query});
   } else {
     // Kein Suchwort → Spotify resume falls verbunden, sonst Lofi
-    if(spToken){ await spApi('PUT', '/me/player/play', {}); addMsg('chat','▶️ Wiedergabe fortgesetzt.','jarvis'); setTimeout(spPollNow,1500); }
+    if(spToken){ await spApi('PUT', '/me/player/play', {}); addMsg('chat','▶️ Wiedergabe fortgesetzt.','jarvis'); setTimeout(spPollNow,1500); resumeAfter(); }
     else playMusic({q: null});
   }
 }
 
+// Diese Spotify-Steuerfunktionen sprechen nichts (nur kurzer Chat-Text), daher rufen sie
+// resumeAfter() selbst am Ende auf - sonst bliebe das Live-Gespräch-Mikro nach einem
+// Sprachbefehl wie "pause" für immer stumm (kein speak() vorhanden, das es sonst auslösen würde).
 async function spotifyPause(){
   await spApi('PUT', '/me/player/pause', {});
   spPlaying = false;
   const b = el('#spPlayBtn'); if(b) b.textContent = '▶';
   addMsg('chat','⏸ Spotify pausiert.','jarvis');
+  resumeAfter();
 }
 
 async function spotifyToggle(){
@@ -3936,12 +3948,14 @@ async function spotifyNext(){
   await spApi('POST', '/me/player/next', {});
   addMsg('chat','⏭ Nächstes Lied.','jarvis');
   setTimeout(spPollNow, 1500);
+  resumeAfter();
 }
 
 async function spotifyPrev(){
   await spApi('POST', '/me/player/previous', {});
   addMsg('chat','⏮ Vorheriges Lied.','jarvis');
   setTimeout(spPollNow, 1500);
+  resumeAfter();
 }
 
 async function spotifyVolume(delta){
@@ -3950,12 +3964,14 @@ async function spotifyVolume(delta){
   const nv = Math.max(0, Math.min(100, cur + delta));
   await spApi('PUT', '/me/player/volume?volume_percent=' + nv, {});
   addMsg('chat','🔊 Lautstärke: ' + nv + '%','jarvis');
+  resumeAfter();
 }
 
 async function spotifyNowPlaying(){
   const s = await spApi('GET', '/me/player/currently-playing');
-  if(!s || !s.item){ addMsg('chat','🎵 Gerade läuft nichts auf Spotify.','jarvis'); return; }
+  if(!s || !s.item){ addMsg('chat','🎵 Gerade läuft nichts auf Spotify.','jarvis'); resumeAfter(); return; }
   addMsg('chat','🎵 **' + escHtml(s.item.name) + '** – ' + escHtml(s.item.artists.map(a=>a.name).join(', ')),'jarvis');
+  resumeAfter();
 }
 
 async function spPollNow(){
@@ -4661,7 +4677,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.6 · Live-Gespräch komplett überarbeitet';
+const JARVIS_VERSION = 'v6.7 · Live-Gespräch: Wetter/Währung/Spotify-Race behoben';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
