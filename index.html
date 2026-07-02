@@ -1529,7 +1529,31 @@ async function portfolioAddMetal(){
   savePortfolio(); el('#portfolioList').style.display='flex'; portfolioRender(); portfolioPollPrices();
   addMsg('trading','➕ **'+query+'** zum Portfolio hinzugefügt (Preis pro Feinunze in USD).','jarvis');
 }
-function portfolioAddManual(){
+async function portfolioFetchYahoo(ticker){
+  try{
+    const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(ticker));
+    const j = await r.json();
+    const res = j.chart && j.chart.result && j.chart.result[0];
+    const price = res && res.meta && res.meta.regularMarketPrice;
+    return (typeof price === 'number') ? price : null;
+  } catch(e){ return null; }
+}
+async function portfolioAddManual(){
+  const ticker = prompt('Ticker-Symbol für Live-Kurs (z.B. "CL=F" = Öl WTI, "GC=F" = Gold, "AAPL" = Apple, "^GSPC" = S&P 500)?\nLeer lassen, wenn du keinen Ticker kennst.');
+  if(ticker && ticker.trim()){
+    const price = await portfolioFetchYahoo(ticker.trim());
+    if(price){
+      const amount = portfolioAskAmount('Stück/Einheiten'); if(!amount) return;
+      const { buyPrice, stopLoss, takeProfit } = portfolioAskLimits();
+      const id = Date.now()+'';
+      portfolio.push({ id, type:'yahoo', ticker:ticker.trim(), symbol:ticker.trim(), name:ticker.trim(), amount, buyPrice, stopLoss, takeProfit, alertedSL:false, alertedTP:false });
+      portfolioPrices['yahoo:'+ticker.trim()] = price;
+      savePortfolio(); el('#portfolioList').style.display='flex'; portfolioRender();
+      addMsg('trading','➕ **'+ticker.trim()+'** zum Portfolio hinzugefügt – Preis wird live abgerufen (aktuell $'+price+').','jarvis');
+      return;
+    }
+    alert('Ticker „'+ticker+'" nicht gefunden oder gerade nicht abrufbar. Trag den Preis stattdessen manuell ein.');
+  }
   const name = prompt('Was ist es (z.B. "Öl WTI", "Apple Aktie", "S&P 500 ETF")?');
   if(!name) return;
   const amount = portfolioAskAmount('Stück/Einheiten'); if(!amount) return;
@@ -1555,7 +1579,12 @@ function portfolioRemove(id){
   portfolio = portfolio.filter(p=>p.id!==id);
   savePortfolio(); portfolioRender();
 }
-function priceKey(p){ return p.type==='metal' ? 'metal:'+p.metalCode : (p.type==='manual' ? 'manual:'+p.id : p.coingeckoId); }
+function priceKey(p){
+  if(p.type==='metal') return 'metal:'+p.metalCode;
+  if(p.type==='manual') return 'manual:'+p.id;
+  if(p.type==='yahoo') return 'yahoo:'+p.ticker;
+  return p.coingeckoId;
+}
 function portfolioBuyLink(symbol){
   return 'https://www.binance.com/en/trade/'+encodeURIComponent(symbol)+'_USDT';
 }
@@ -1609,7 +1638,7 @@ async function portfolioRender(){
       (p.stopLoss||p.takeProfit ? '<div style="font-size:11px;color:var(--muted);width:100%;">'+(p.stopLoss?'🛑 SL $'+p.stopLoss+' ':'')+(p.takeProfit?'🎯 TP $'+p.takeProfit:'')+'</div>' : '')+
       '<div style="display:flex;gap:4px;flex-wrap:wrap;">'+
         (p.type==='crypto' ? portfolioBuyLinks(p.symbol).map(l=>'<a href="'+l.url+'" target="_blank" style="padding:6px 10px;border-radius:8px;background:var(--accent);color:#000;font-size:11px;font-weight:700;text-decoration:none;">'+l.label+'</a>').join('') :
-          '<button onclick="portfolioUpdateManualPrice(\''+p.id+'\')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:11px;">🔄 Preis</button>')+
+          (p.type==='manual' ? '<button onclick="portfolioUpdateManualPrice(\''+p.id+'\')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-size:11px;">🔄 Preis</button>' : '<span style="font-size:11px;color:var(--muted);">🌐 Live</span>'))+
       '</div>'+
       '<button onclick="portfolioRemove(\''+p.id+'\')" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:12px;">✕</button>'+
     '</div>';
@@ -1644,6 +1673,11 @@ async function portfolioPollPrices(){
           if(entry) portfolioPrices['metal:'+code] = entry[key];
         });
       } catch(e){ /* Edelmetall-Quelle kurz weg - beim naechsten Poll erneut versuchen */ }
+    }
+    const yahooTickers = [...new Set(portfolio.filter(p=>p.type==='yahoo').map(p=>p.ticker))];
+    for(const t of yahooTickers){
+      const price = await portfolioFetchYahoo(t);
+      if(price) portfolioPrices['yahoo:'+t] = price;
     }
     if(el('#portfolioList').style.display === 'flex') portfolioRender();
     portfolioCheckAlerts();
@@ -5481,7 +5515,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.7 · Portfolio: Gold/Silber/Platin + Öl/Aktien manuell';
+const JARVIS_VERSION = 'v8.8 · Live-Kurse für Öl/Aktien/Indizes per Ticker (ohne Broker-Konto)';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
