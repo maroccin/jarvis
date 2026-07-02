@@ -861,6 +861,7 @@
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <button onclick="portfolioToggle()" id="portfolioToggleBtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;font-weight:600;">📊 Portfolio (0)</button>
           <button onclick="portfolioAdd()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">➕ Position hinzufügen</button>
+          <button onclick="toggleTradingAuto()" id="tradingAutoBtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:13px;">🤖 Autonome Überwachung: Aus</button>
           <span style="font-size:11px;color:var(--muted);">Live-Kurse nur für Krypto (kostenlos, kein Key nötig)</span>
         </div>
         <div id="portfolioList" style="display:none;margin-top:10px;flex-direction:column;gap:8px;"></div>
@@ -1582,7 +1583,48 @@ async function portfolioPollPrices(){
     portfolio.forEach(p=>{ if(j[p.coingeckoId]) portfolioPrices[p.coingeckoId] = j[p.coingeckoId].usd; });
     if(el('#portfolioList').style.display === 'flex') portfolioRender();
     portfolioCheckAlerts();
+    tradingAutoCheck();
   }catch(e){ /* Netzwerk kurz weg -> beim naechsten Poll erneut versuchen */ }
+}
+// ---- Autonome Trading-Überwachung: beobachtet selbständig, meldet sich nur bei wirklich Wichtigem
+// (grosse Kursbewegung), schlägt konkret was vor - kauft/verkauft aber NIE selbst (kein Broker-Zugriff). ----
+let tradingAutoOn = localStorage.getItem('jarvis_trading_auto') === 'true';
+let tradingAutoLastPrices = {};
+let tradingAutoBusy = false;
+function updateTradingAutoBtn(){
+  const b = el('#tradingAutoBtn'); if(!b) return;
+  b.textContent = tradingAutoOn ? '🤖 Autonome Überwachung: An' : '🤖 Autonome Überwachung: Aus';
+  b.style.borderColor = tradingAutoOn ? 'var(--green)' : 'var(--border)';
+}
+function toggleTradingAuto(){
+  tradingAutoOn = !tradingAutoOn;
+  localStorage.setItem('jarvis_trading_auto', tradingAutoOn ? 'true' : 'false');
+  updateTradingAutoBtn();
+  if(tradingAutoOn) addMsg('trading','🤖 Autonome Überwachung ist an. Ich beobachte dein Portfolio im Hintergrund und melde mich nur, wenn wirklich was Wichtiges passiert – gekauft/verkauft wird nie automatisch, das machst du selbst über den Handeln-Link.','jarvis');
+}
+async function tradingAutoCheck(){
+  if(!tradingAutoOn || !portfolio.length || !apiKey || tradingAutoBusy) return;
+  let significant = false;
+  portfolio.forEach(p=>{
+    const price = portfolioPrices[p.coingeckoId]; if(!price) return;
+    const last = tradingAutoLastPrices[p.coingeckoId];
+    if(last && Math.abs((price-last)/last) >= 0.03) significant = true;
+    tradingAutoLastPrices[p.coingeckoId] = price;
+  });
+  if(!significant) return;
+  tradingAutoBusy = true;
+  try{
+    const summary = portfolio.map(p=>p.name+' ('+p.symbol+'): $'+(portfolioPrices[p.coingeckoId]||'?')+(p.buyPrice?', Kauf $'+p.buyPrice:'')+(p.stopLoss?', SL $'+p.stopLoss:'')+(p.takeProfit?', TP $'+p.takeProfit:'')).join('\n');
+    const data = await callClaude({ model, max_tokens:300,
+      system:'Du bist ein knapper autonomer Trading-Wächter. Antworte NUR wenn wirklich etwas Wichtiges auffällt (grosse Bewegung, erkennbares Trendwechsel-Risiko, guter Moment zum Nachkaufen/Absichern) - sonst antworte EXAKT mit "NICHTS". Sonst max 2 Sätze auf Deutsch, konkret, mit klarem Handlungsvorschlag. Du triffst keine Entscheidung selbst, du gibst nur die Einschätzung.',
+      messages:[{ role:'user', content:'Portfolio gerade:\n'+summary+'\nGib deine Einschätzung, falls nötig.' }] });
+    const txt = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(' ').trim();
+    if(txt && !/^nichts/i.test(txt)){
+      addMsg('trading', '🤖 **Autonome Beobachtung:** '+txt, 'jarvis');
+      speak(txt);
+    }
+  } catch(e){ /* stiller Fehlschlag - beim naechsten signifikanten Sprung erneut versuchen */ }
+  finally { tradingAutoBusy = false; }
 }
 function portfolioCheckAlerts(){
   let changed = false;
@@ -5335,7 +5377,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.4 · Trading: Mini-Charts, Day-/Langfrist-Ideen, Börsenvergleich';
+const JARVIS_VERSION = 'v8.5 · Autonome Trading-Überwachung';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
@@ -5361,6 +5403,7 @@ window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildsc
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
 updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();
 if(el('#portfolioToggleBtn')) el('#portfolioToggleBtn').textContent = '📊 Portfolio ('+portfolio.length+')';
+updateTradingAutoBtn();
 if(faceOn) startFaceDetection();
 setInterval(renderChips, 30*60*1000);   // Schnell-Buttons an Tageszeit anpassen (halbstündlich)
 // Persönlichkeit: gelegentliches "Blinzeln" im echten Leerlauf, damit der Orb lebendig statt
