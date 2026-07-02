@@ -1484,7 +1484,38 @@ async function callClaude(body, extraHeaders){
   if(!res.ok){ throw new Error(res.status+' '+await res.text()); }
   return res.json();
 }
-async function askClaude(view, userText){
+// Streaming-Variante: liefert Text-Stücke live per onDelta(chunk) statt am Ende alles auf einmal.
+async function callClaudeStream(body, extraHeaders, onDelta){
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers: Object.assign({ 'content-type':'application/json','x-api-key':apiKey,
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' }, extraHeaders||{}),
+    body: JSON.stringify(Object.assign({}, body, { stream:true }))
+  });
+  if(!res.ok){ throw new Error(res.status+' '+await res.text()); }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '', full = '';
+  while(true){
+    const { done, value } = await reader.read();
+    if(done) break;
+    buf += decoder.decode(value, { stream:true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for(const line of lines){
+      if(!line.startsWith('data:')) continue;
+      const raw = line.slice(5).trim();
+      if(!raw) continue;
+      let evt; try{ evt = JSON.parse(raw); } catch(e){ continue; }
+      if(evt.type==='content_block_delta' && evt.delta && evt.delta.type==='text_delta'){
+        full += evt.delta.text;
+        if(onDelta) onDelta(evt.delta.text, full);
+      }
+    }
+  }
+  return full;
+}
+async function askClaude(view, userText, onDelta){
   const hist = histories[view];
   hist.push({ role:'user', content:userText });
   let sys = (typeof PROMPTS[view]==='function') ? PROMPTS[view]() : PROMPTS[view];
@@ -1516,6 +1547,14 @@ async function askClaude(view, userText){
   // Limit erlaubt -> Anthropics Erweiterung für lange Antworten aktivieren, sonst wird mitten im Code abgeschnitten.
   const extraHeaders = isWebsite ? { 'anthropic-beta': 'output-128k-2025-02-19' } : undefined;
 
+  // Ohne Tools kann direkt gestreamt werden (Text erscheint sofort live) - mit Tools (Web-Suche,
+  // Geräte-Steuerung) braucht es die volle Antwort für die Tool-Use-Schleife, dort kein Streaming.
+  if(!tools.length && onDelta){
+    const text = await callClaudeStream(Object.assign({}, base, { messages: hist }), extraHeaders, onDelta);
+    const answer = text.trim() || 'Erledigt. ✅';
+    hist.push({ role:'assistant', content:answer });
+    return answer;
+  }
   let data = await callClaude(Object.assign({}, base, { messages: hist }), extraHeaders);
   let guard = 0;
   while(data.stop_reason==='tool_use' && guard++ < 3){
@@ -1566,10 +1605,18 @@ async function respond(view, q){
   }
   const t = typingIndicator(view); orb.classList.add('thinking');
   try {
-    const answer = await askClaude(view, q);
-    t.remove(); sfxReceive();
+    let liveWrap = null, liveBody = null, started = false;
+    const onDelta = (view==='website') ? null : (chunk, full)=>{
+      if(!started){ started = true; t.remove(); sfxReceive(); orb.classList.remove('thinking'); }
+      if(!liveWrap){ liveWrap = addMsg(view, full, 'jarvis'); liveBody = liveWrap.querySelector('div:last-child'); }
+      else { liveBody.innerHTML = formatText(full); chatBox(view).scrollTop = chatBox(view).scrollHeight; }
+    };
+    const answer = await askClaude(view, q, onDelta);
+    if(!started){ t.remove(); sfxReceive(); }
     const shown = (view==='website') ? websiteHandleAnswer(answer) : answer;
-    addMsg(view, shown,'jarvis'); speak(shown);
+    if(liveWrap){ liveBody.innerHTML = formatText(shown); liveWrap.onclick=(e)=>{ if(e.target.tagName!=='A') speak(shown); }; }
+    else { addMsg(view, shown,'jarvis'); }
+    speak(shown);
   } catch(e){
     t.remove();
     let m = 'Ups, da ging was schief. ';
@@ -4963,7 +5010,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.4 · Orb rechts mittig deutlich sichtbarer';
+const JARVIS_VERSION = 'v7.5 · Live-Streaming der Antworten';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
