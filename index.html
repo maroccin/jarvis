@@ -1437,7 +1437,19 @@ const sfxListen  = ()=>{ beep(520, 880, 0.12, 'sine', 0.05); };
 const sfxWake    = ()=>{ beep(660,1320,0.12,'sine',0.07); setTimeout(()=>beep(880,1760,0.10,'sine',0.06),100); };
 
 // Eigener Gesprächsverlauf pro Bereich → bleibt aufgeräumt
-const histories = { chat: [], trading: [], money: [], shop: [], research: [], marketing: [], tasksagent: [], security: [], website: [] };
+// Gesprächsverlauf UND gebaute Website überleben jetzt Absturz/Internet weg/Stromausfall -
+// wird laufend in localStorage gesichert, damit bei einem Crash mitten in der Arbeit (z.B.
+// beim Webshop bauen) nichts verloren geht.
+const HIST_VIEWS = ['chat','trading','money','shop','research','marketing','tasksagent','security','website'];
+let histories = { chat: [], trading: [], money: [], shop: [], research: [], marketing: [], tasksagent: [], security: [], website: [] };
+try{
+  const savedHist = JSON.parse(localStorage.getItem('jarvis_histories')||'null');
+  if(savedHist) HIST_VIEWS.forEach(v=>{ if(Array.isArray(savedHist[v])) histories[v] = savedHist[v]; });
+} catch(e){}
+function saveHistories(){
+  try{ localStorage.setItem('jarvis_histories', JSON.stringify(histories)); }
+  catch(e){ /* Speicher voll (z.B. viele Bilder im Verlauf) - nicht kritisch, weiter versuchen */ }
+}
 
 const BASE = ()=>`Du bist ${jName}, der persönliche Assistent von Kamil. Sprich Deutsch, locker, direkt und kurz – wie ein cleverer Kumpel. Gib KONKRETE, umsetzbare Antworten, keine Floskeln. Nutze sparsam Emojis. Du hast trockenen, charmanten Humor – gelegentlich ein pointierter Spruch oder eine lockere Bemerkung ist willkommen, aber übertreib's nicht und lass es nie auf Kosten von Klarheit oder Nützlichkeit gehen. Bei ernsten Themen (Geld, Sicherheit, Gesundheit) Humor sparsam einsetzen.`;
 const PROMPTS = {
@@ -1959,6 +1971,7 @@ async function callClaudeStream(body, extraHeaders, onDelta){
 async function askClaude(view, userText, onDelta, onStatus){
   const hist = histories[view];
   hist.push({ role:'user', content:userText });
+  saveHistories();
   let sys = (typeof PROMPTS[view]==='function') ? PROMPTS[view]() : PROMPTS[view];
   if(levels[view]) sys += STYLE[levels[view]] || '';
   // Langzeitgedächtnis: was Jarvis dauerhaft über Kamil weiß
@@ -2008,6 +2021,7 @@ async function askClaude(view, userText, onDelta, onStatus){
     const text = await callClaudeStream(Object.assign({}, base, { messages: hist }), extraHeaders, onDelta);
     const answer = text.trim() || 'Erledigt. ✅';
     hist.push({ role:'assistant', content:answer });
+    saveHistories();
     return answer;
   }
   let data = await callClaude(Object.assign({}, base, { messages: hist }), extraHeaders);
@@ -2029,6 +2043,7 @@ async function askClaude(view, userText, onDelta, onStatus){
   const answer = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim()
     || 'Erledigt. ✅';
   hist.push({ role:'assistant', content:answer });
+  saveHistories();
   return answer;
 }
 
@@ -2089,7 +2104,7 @@ async function respond(view, q){
 }
 
 // ---- Website-Agent: erkennt generierten HTML-Code, zeigt Live-Vorschau + Download ----
-let websiteHTML = '';
+let websiteHTML = localStorage.getItem('jarvis_website_html') || '';
 // Entfernt Reste der Codeblock-Markierung aus dem extrahierten HTML.
 // Charlie schreibt die Sprachmarkierung mal als "```html", mal als "``` html" oder auf eigener
 // Zeile - rutschte sie mit in die Datei, begann diese mit dem Wort "html" und war kaputt.
@@ -2112,6 +2127,7 @@ function websiteHandleAnswer(answer){
     m = open; truncated = true;
   }
   websiteHTML = websiteCleanCode(m[1]);
+  try{ localStorage.setItem('jarvis_website_html', websiteHTML); } catch(e){}
   const frame = el('#websitePreview');
   if(frame) frame.srcdoc = websiteHTML;
   const dl = el('#websiteDownloadBar'); if(dl) dl.style.display = 'flex';
@@ -5515,7 +5531,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.8 · Live-Kurse für Öl/Aktien/Indizes per Ticker (ohne Broker-Konto)';
+const JARVIS_VERSION = 'v8.9 · Gesprächsverlauf & Website überleben Absturz/Stromausfall';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
@@ -5537,6 +5553,19 @@ const JARVIS_VERSION = 'v8.8 · Live-Kurse für Öl/Aktien/Indizes per Ticker (o
 
 // ---- Start ----
 buildDial(); renderHome(); renderScenes(); updateStatus(); applyModuleVisibility();
+// Nach Absturz/Neuladen: gespeicherten Gesprächsverlauf wieder als Chat-Bläschen anzeigen und
+// eine ggf. schon gebaute Website wieder in die Vorschau laden - nichts geht verloren.
+HIST_VIEWS.forEach(v=>{
+  (histories[v]||[]).forEach(m=>{
+    if(typeof m.content !== 'string' || !m.content.trim()) return;
+    const shown = (v==='website' && m.role==='assistant') ? websiteHandleAnswer(m.content) : m.content;
+    addMsg(v, shown, m.role==='user' ? 'user' : 'jarvis');
+  });
+});
+if(websiteHTML){
+  const frame = el('#websitePreview'); if(frame) frame.srcdoc = websiteHTML;
+  const dl = el('#websiteDownloadBar'); if(dl) dl.style.display = 'flex';
+}
 window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
 updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();
