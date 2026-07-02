@@ -163,6 +163,10 @@
   /* Kurzes Blinzeln alle paar Sekunden im Leerlauf - macht den Orb "lebendig" statt nur stumpf zu pulsieren */
   .orb.blink { animation: blinkflash 0.35s ease-in-out 1; }
   @keyframes blinkflash { 0%,100%{filter:brightness(1);} 50%{filter:brightness(1.6) saturate(1.3);} }
+  /* Grosser Orb rechts mittig im Hintergrund des Hauptbereichs (dort wo bisher nur ein Lichtschein war) */
+  #orbBig { position:fixed; right:8%; top:50%; transform:translateY(-50%); width:220px; height:220px;
+    z-index:0; pointer-events:none; opacity:0.5; }
+  @media (max-width: 900px){ #orbBig { display:none; } }   /* auf schmalen Bildschirmen verdeckt es sonst Inhalte */
   .brand h1 { font-family:"Orbitron", sans-serif; font-size: 17px; font-weight: 900; letter-spacing: 4px;
     background: linear-gradient(180deg, #eafcff, var(--blue)); -webkit-background-clip: text; background-clip: text;
     color: transparent; text-shadow: 0 0 18px rgba(53,200,255,0.5); }
@@ -528,6 +532,9 @@
 </head>
 <body>
   <div id="bgglow"></div>
+  <!-- Grosser Orb rechts mittig im Hauptbereich - spiegelt den kleinen Orb oben links (gleiche
+       Stimmung/Zustand), dient als ruhige, "lebendige" Präsenz im Hintergrund des Inhalts. -->
+  <div id="orbBig" class="orb"></div>
   <!-- Versions-Anzeige (zum Prüfen ob neueste Version geladen ist) -->
   <div id="verBadge" style="position:fixed;bottom:4px;left:6px;z-index:9998;font-size:10px;color:rgba(120,160,200,0.45);pointer-events:none;font-family:monospace;"></div>
   <!-- Boot-Startbildschirm -->
@@ -1178,6 +1185,14 @@
 
 <script>
 const orb = document.getElementById('orb');
+const orbBig = document.getElementById('orbBig');
+// Grosser Orb rechts mittig übernimmt automatisch dieselben Zustands-Klassen wie der kleine
+// Orb oben links (thinking/speaking/listening/happy/alert/blink) - ein Beobachter statt an
+// jeder Stelle im Code doppelt orb.classList.add(...) schreiben zu müssen.
+if(orb && orbBig){
+  new MutationObserver(()=>{ orbBig.className = 'orb ' + orb.className.replace(/^orb\s*/,''); })
+    .observe(orb, { attributes:true, attributeFilter:['class'] });
+}
 // Persönlichkeit: kurze Stimmungs-Anzeige am Orb (grün=Erfolg, rot/amber=Alarm), unterbricht
 // laufende Zustände (thinking/speaking/listening) nicht dauerhaft - blendet sich nach kurzer
 // Zeit von selbst wieder aus.
@@ -4948,7 +4963,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.2 · Orb mit Persönlichkeit (Stimmungsfarben)';
+const JARVIS_VERSION = 'v7.3 · Grosser Orb rechts mittig';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
