@@ -1172,6 +1172,15 @@
       <button class="close" style="width:100%;margin-top:8px;" onclick="faceClearProfile()">🗑️ Gesichtsprofil löschen</button>
       <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
 
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">🐞 Bug-Log</h2>
+      <p>Fehler werden automatisch mit Uhrzeit, Bereich (Screen) und letzter Aktion gespeichert – hilft beim Nachvollziehen, wenn mal was schiefläuft.</p>
+      <div id="bugLogList" style="max-height:220px;overflow:auto;font-size:12px;line-height:1.5;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;"></div>
+      <div class="row" style="gap:8px;">
+        <button class="close" style="flex:1" onclick="exportBugLog()">📤 Log exportieren</button>
+        <button class="close" style="flex:1" onclick="clearBugLog()">🗑️ Log löschen</button>
+      </div>
+
       <div class="row">
         <button class="save" onclick="saveSettings()">Speichern</button>
         <button class="close" onclick="closeSettings()">Schliessen</button>
@@ -1205,6 +1214,36 @@ function orbMood(kind, ms){
   clearTimeout(orbMoodTimer);
   orbMoodTimer = setTimeout(()=>orb.classList.remove(kind), ms || (kind==='alert' ? 4000 : 1300));
 }
+// ---- Bug-Log: Fehler mit Uhrzeit, Bereich (Screen) und letzter Aktion mitschneiden ----
+let bugLog = [];
+try{ bugLog = JSON.parse(localStorage.getItem('jarvis_buglog')||'[]'); } catch(e){ bugLog = []; }
+let lastAction = 'App gestartet';
+function logBug(msg, action){
+  bugLog.unshift({ time: new Date().toLocaleString('de-CH'), screen: (typeof currentView!=='undefined' && currentView) || '?', action: action || lastAction, error: String(msg||'').slice(0,500) });
+  if(bugLog.length > 50) bugLog.length = 50;
+  try{ localStorage.setItem('jarvis_buglog', JSON.stringify(bugLog)); } catch(e){}
+  renderBugLog();
+}
+function renderBugLog(){
+  const box = el('#bugLogList'); if(!box) return;
+  if(!bugLog.length){ box.innerHTML = '<span style="color:var(--muted)">Keine Fehler bisher. 🎉</span>'; return; }
+  box.innerHTML = bugLog.map(b=>
+    '<div style="padding:6px 0;border-bottom:1px solid var(--border);">'+
+      '<b>🕒 '+b.time+'</b> · 📍 '+b.screen+'<br>'+
+      '<span style="color:var(--muted)">Aktion: '+b.action+'</span><br>'+
+      '<span style="color:#ff6b6b">Fehler: '+b.error+'</span>'+
+    '</div>'
+  ).join('');
+}
+function clearBugLog(){ bugLog = []; localStorage.removeItem('jarvis_buglog'); renderBugLog(); }
+function exportBugLog(){
+  const blob = new Blob([JSON.stringify(bugLog,null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'jarvis-bug-log.json'; a.click();
+}
+window.addEventListener('error', (e)=>{ logBug(e.message || e.error, lastAction); });
+window.addEventListener('unhandledrejection', (e)=>{ logBug((e.reason && e.reason.message) || e.reason, lastAction); });
+
 let speakOn = true;
 let apiKey = localStorage.getItem('jarvis_key') || '';
 let model = localStorage.getItem('jarvis_model') || 'claude-sonnet-4-6';
@@ -1592,6 +1631,7 @@ async function askClaude(view, userText, onDelta, onStatus){
 }
 
 async function respond(view, q){
+  lastAction = q;
   // Lokale Befehle auch beim Tippen abfangen (nicht nur bei Sprache)
   const low = q.toLowerCase().trim();
   const song = matchPlayMusic(low, q);
@@ -1636,6 +1676,7 @@ async function respond(view, q){
     speak(shown);
   } catch(e){
     t.remove();
+    logBug(e.message, q);
     let m = 'Ups, da ging was schief. ';
     if(/401/.test(e.message)) m += 'Der API Key scheint falsch zu sein – prüf ihn in den Einstellungen. 🔑';
     else if(/429/.test(e.message)) m += 'Kein Guthaben mehr oder zu viele Anfragen. Lad Guthaben auf console.anthropic.com auf.';
@@ -3456,6 +3497,7 @@ function openSettings(){
   el('#ytKeyInput').value=ytKey;
   renderMem();
   populateVoices();
+  renderBugLog();
   el('#overlay').classList.add('show');
 }
 function closeSettings(){ el('#overlay').classList.remove('show'); }
@@ -5027,7 +5069,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.7 · Planungs-Agent vor Website-Bau';
+const JARVIS_VERSION = 'v7.8 · Bug-Log mit Uhrzeit, Screen & Aktion';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
