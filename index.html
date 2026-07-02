@@ -1173,6 +1173,12 @@
       <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">🔄 Rollback / Sicherungspunkte</h2>
+      <p>Vor jedem Speichern wird automatisch ein Sicherungspunkt angelegt. Wenn mal was kaputt geht, einfach zu einem älteren Stand zurückspringen.</p>
+      <div id="snapshotList" style="max-height:200px;overflow:auto;margin-bottom:8px;"></div>
+      <button class="close" style="width:100%;" onclick="createSnapshot('Manuell')">📌 Jetzt Sicherungspunkt erstellen</button>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
       <h2 style="font-size:16px;">🐞 Bug-Log</h2>
       <p>Fehler werden automatisch mit Uhrzeit, Bereich (Screen) und letzter Aktion gespeichert – hilft beim Nachvollziehen, wenn mal was schiefläuft.</p>
       <div id="bugLogList" style="max-height:220px;overflow:auto;font-size:12px;line-height:1.5;background:rgba(0,0,0,.2);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px;"></div>
@@ -3530,6 +3536,7 @@ function openSettings(){
   renderMem();
   populateVoices();
   renderBugLog();
+  renderSnapshots();
   el('#overlay').classList.add('show');
 }
 function closeSettings(){ el('#overlay').classList.remove('show'); }
@@ -4380,7 +4387,50 @@ function matchSpotify(low, txt){
   if(el('#spRedirectUri')) el('#spRedirectUri').textContent = location.origin + location.pathname;
 })();
 
+// ---- Rollback-System: Sicherungspunkte der Einstellungen, falls mal was schiefgeht ----
+function collectSnapshotData(){
+  const data = {};
+  for(let i=0;i<localStorage.length;i++){
+    const k = localStorage.key(i);
+    if(k.startsWith('jarvis')||k.startsWith('hue')||k.startsWith('ha_')||k.startsWith('lg_')) data[k]=localStorage.getItem(k);
+  }
+  return data;
+}
+function getSnapshots(){ try{ return JSON.parse(localStorage.getItem('jarvis_snapshots')||'[]'); } catch(e){ return []; } }
+function saveSnapshots(list){ try{ localStorage.setItem('jarvis_snapshots', JSON.stringify(list)); } catch(e){} }
+function createSnapshot(label){
+  const list = getSnapshots();
+  list.unshift({ time: new Date().toLocaleString('de-CH'), label: label || 'Automatisch', data: collectSnapshotData() });
+  if(list.length > 10) list.length = 10;
+  saveSnapshots(list);
+  renderSnapshots();
+}
+function restoreSnapshot(i){
+  const list = getSnapshots();
+  const snap = list[i]; if(!snap) return;
+  if(!confirm('Sicherungspunkt „'+snap.label+'" vom '+snap.time+' wiederherstellen? Aktuelle Einstellungen werden vorher gesichert.')) return;
+  createSnapshot('Vor Wiederherstellung');
+  Object.keys(snap.data).forEach(k=>localStorage.setItem(k, snap.data[k]));
+  addMsg('chat','↩️ Sicherungspunkt wiederhergestellt – ich lade neu, damit alles sauber greift.','jarvis');
+  setTimeout(()=>location.reload(), 1200);
+}
+function deleteSnapshot(i){
+  const list = getSnapshots(); list.splice(i,1); saveSnapshots(list); renderSnapshots();
+}
+function renderSnapshots(){
+  const box = el('#snapshotList'); if(!box) return;
+  const list = getSnapshots();
+  if(!list.length){ box.innerHTML = '<span style="color:var(--muted)">Noch keine Sicherungspunkte.</span>'; return; }
+  box.innerHTML = list.map((s,i)=>
+    '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;">'+
+      '<div style="flex:1"><b>'+s.label+'</b><br><span style="color:var(--muted)">'+s.time+'</span></div>'+
+      '<button class="close" style="padding:4px 8px;" onclick="restoreSnapshot('+i+')">↩️ Zurück</button>'+
+      '<button class="close" style="padding:4px 8px;" onclick="deleteSnapshot('+i+')">🗑️</button>'+
+    '</div>'
+  ).join('');
+}
 function saveSettings(){
+  createSnapshot('Vor Speichern');
   const newName = el('#nameInput').value.trim().toUpperCase();
   if(newName && newName!==jName){ jName=newName; localStorage.setItem('jarvis_name',jName); applyName(); }
   const bgP = el('#bgPatternInput').value;
@@ -5101,7 +5151,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.9 · Bug-Log jetzt mit Screenshot';
+const JARVIS_VERSION = 'v8.0 · Rollback-System für Einstellungen';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
