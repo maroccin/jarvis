@@ -1710,7 +1710,7 @@ if(SR){
   recog.onend=()=>{
     const wasListening = recogState==='listening';
     recogState='idle'; micVisual(false);
-    if(liveMode && !busy){ setTimeout(startRecog,250); return; }
+    if(liveMode && !busy){ restartRecogWhenQuiet(250); return; }
     // Push-to-talk: rot war an, aber nichts erkannt → ehrliche Rückmeldung
     if(wasListening && !gotResult && !busy){
       addMsg(currentView,'🎤 Ich habe nichts gehört. Tipp nochmal aufs Mikro und sprich gleich danach deutlich los.','jarvis');
@@ -1723,10 +1723,10 @@ if(SR){
       addMsg(currentView,'🎤 Das Mikrofon ist blockiert. Klick oben im Browser auf das Schloss-Symbol → Mikrofon „Zulassen".','jarvis');
     } else if(e.error==='no-speech'){
       if(!liveMode) addMsg(currentView,'🎤 Ich habe nichts gehört. Tipp nochmal und sprich gleich los. 🙂','jarvis');
-      else if(!busy) setTimeout(startRecog,300);
+      else if(!busy) restartRecogWhenQuiet(300);
     } else if(e.error==='aborted'){
       /* Nutzer hat selbst gestoppt – keine Meldung */
-    } else if(liveMode && !busy){ setTimeout(startRecog,400); }
+    } else if(liveMode && !busy){ restartRecogWhenQuiet(400); }
   };
 }
 function micVisual(on){
@@ -1753,7 +1753,21 @@ function startRecog(){
   }
 }
 let micWanted=false;
-function resumeAfter(){ busy=false; if(liveMode){ setTimeout(startRecog,300); } else if(wakeMode && !IS_IOS){ setTimeout(startWakeRecog,500); } }
+// Zentrale, robuste Neustart-Logik fürs Live-Gespräch: startet das Mikro ERST wenn Jarvis
+// wirklich fertig gesprochen hat (prüft speechSynthesis.speaking selbst, statt sich nur auf
+// die busy-Buchhaltung zu verlassen). Ohne diese Prüfung startete das Mikro oft schon während
+// Jarvis noch redete - es hörte sich quasi selbst zu, erkannte nichts Sinnvolles und wirkte
+// dadurch, als würde "Live-Gespräch" gar nicht aufnehmen.
+let restartPoll = null;
+function restartRecogWhenQuiet(delayMs){
+  clearTimeout(restartPoll);
+  restartPoll = setTimeout(function tryRestart(){
+    if(!liveMode) return;
+    if(window.speechSynthesis && speechSynthesis.speaking){ restartPoll = setTimeout(tryRestart, 200); return; }
+    startRecog();
+  }, delayMs||250);
+}
+function resumeAfter(){ busy=false; if(liveMode){ restartRecogWhenQuiet(250); } else if(wakeMode && !IS_IOS){ setTimeout(startWakeRecog,500); } }
 
 // ---- Wake-Word "Hey Jarvis" ----
 // Nutzt liveMode (eine SR-Instanz), filtert auf "Jarvis" bis aktiviert
@@ -1782,7 +1796,7 @@ function toggleWake(){
   updateWakeBtn();
   if(wakeMode){
     // liveMode einschalten – von dort aus filtern wir
-    if(!liveMode){ liveMode=true; speakOn=true; busy=false; updateLiveBtn(); setTimeout(startRecog,300); }
+    if(!liveMode){ liveMode=true; speakOn=true; busy=false; updateLiveBtn(); restartRecogWhenQuiet(300); }
     addMsg('chat','⚡ **Wake-Word ist an.** Sag einfach „Jarvis" – ich höre durchgehend zu und aktiviere mich sofort.','jarvis');
     switchView('chat');
   } else {
@@ -1826,11 +1840,11 @@ function toggleLive(){
     speakOn=true; busy=false;
     addMsg(currentView,'🎙️ **Live-Gespräch ist an.** Sprich einfach drauflos – ich höre durchgehend zu und antworte. Du kannst auch sagen: „Bereich Trading", „Schalte das Wohnzimmerlicht aus" oder „Stopp Gespräch" zum Beenden.','jarvis');
     speak('Live Gespräch ist an. Ich höre zu.');
-    // Mikrofon DIREKT starten, nicht erst warten bis die Sprachausgabe fertig ist – deren
-    // "onend"-Ereignis feuert in Chrome/Edge manchmal nicht zuverlässig, wodurch das Live-
-    // Gespräch sonst nie zu hören anfängt (das normale 🎤 startet deshalb bewusst genauso).
+    // Mikrofon startet sobald die Ansage WIRKLICH fertig ist (per speechSynthesis.speaking
+    // geprüft, nicht per Warten auf das in Chrome/Edge unzuverlässige "onend"-Ereignis) - sonst
+    // hört sich das Mikro selbst beim Sprechen zu und erkennt nichts Sinnvolles.
     micWanted = true;
-    setTimeout(startRecog, 400);
+    restartRecogWhenQuiet(250);
   } else {
     micWanted=false; if(recog){ try{ recog.stop(); }catch(_){} } speechSynthesis.cancel();
     addMsg(currentView,'⏹️ Live-Gespräch beendet.','jarvis');
@@ -1858,7 +1872,7 @@ function handleVoice(txt){
       if(afterWake.length > 2){
         // Direkt weiterverarbeiten mit dem Rest
       } else {
-        speak('Ja, ich bin da.'); resumeAfter(); return;
+        speak('Ja, ich bin da.'); return;   // speak() ruft resumeAfter() selbst auf, sobald es fertig ist
       }
     } else {
       resumeAfter(); return; // Kein Wake-Word → ignorieren, weiter zuhören
@@ -4647,7 +4661,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.5 · Live-Gespräch: durchgehend zuverlässig';
+const JARVIS_VERSION = 'v6.6 · Live-Gespräch komplett überarbeitet';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
@@ -4680,7 +4694,7 @@ if(hueUser) hueLoadLights();   // echte Hue-Lampen laden, falls schon verbunden
 if(lgIp && lgKey) lgConnect(); // TV wieder verbinden, falls schon gekoppelt
 if(haToken) haLoad().then(checkSecurityAlerts).catch(()=>{});          // Home-Assistant-Geräte laden
 updateWakeBtn(); updateShopifyBar(); applyName(); applyBgPattern(localStorage.getItem('jarvis_bg')||'grid');
-if(wakeMode && SR && !IS_IOS){ liveMode=true; speakOn=true; updateLiveBtn(); setTimeout(startRecog,1500); }
+if(wakeMode && SR && !IS_IOS){ liveMode=true; speakOn=true; updateLiveBtn(); setTimeout(()=>restartRecogWhenQuiet(0), 1500); }
 setInterval(refreshCams, 4000);   // Kamera-Live-Bilder aktualisieren
 const _h = new Date().getHours();
 const _gruss = _h<5?'Gute Nacht':_h<11?'Guten Morgen':_h<18?'Hallo':_h<22?'Guten Abend':'Schönen späten Abend';
