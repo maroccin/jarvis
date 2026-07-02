@@ -537,6 +537,40 @@
   <div id="orbBig" class="orb"></div>
   <!-- Versions-Anzeige (zum Prüfen ob neueste Version geladen ist) -->
   <div id="verBadge" style="position:fixed;bottom:4px;left:6px;z-index:9998;font-size:10px;color:rgba(120,160,200,0.45);pointer-events:none;font-family:monospace;"></div>
+
+  <!-- Offline-Banner -->
+  <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9997;background:#ff5c7a;color:#1a0508;text-align:center;font-weight:700;padding:6px;font-size:13px;">📡 Kein Internet – Charlie kann gerade nicht antworten. Lokale Funktionen (Timer, Aufgaben) gehen weiter.</div>
+  <!-- Update-Banner -->
+  <div id="updateBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9996;background:#35c8ff;color:#04141f;text-align:center;font-weight:700;padding:6px;font-size:13px;cursor:pointer;" onclick="location.reload()">🔄 Neue Version verfügbar – hier tippen zum Neuladen</div>
+
+  <!-- Onboarding: läuft nur beim allerersten Start -->
+  <div id="onboardOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(3,8,16,0.92);align-items:center;justify-content:center;">
+    <div style="max-width:440px;width:90%;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:26px;text-align:center;">
+      <div style="font-size:40px;margin-bottom:8px;">👋</div>
+      <h2 style="margin-bottom:10px;">Willkommen bei Charlie!</h2>
+      <p style="color:var(--muted);margin-bottom:16px;line-height:1.6;">Kurz drei Dinge, dann bist du startklar:<br>1️⃣ Claude API-Key eintragen<br>2️⃣ Deinen Namen sagen<br>3️⃣ Module auswählen, die du brauchst</p>
+      <button class="save" style="width:100%;" onclick="closeOnboarding(); openSettings();">🚀 Los geht's – Einstellungen öffnen</button>
+      <button class="close" style="width:100%;margin-top:8px;" onclick="closeOnboarding();">Später</button>
+    </div>
+  </div>
+
+  <!-- Befehle-Übersicht -->
+  <div id="helpOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(3,8,16,0.85);align-items:center;justify-content:center;">
+    <div style="max-width:520px;width:90%;max-height:80vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;">
+      <h2 style="margin-bottom:14px;">❓ Was du alles sagen kannst</h2>
+      <div style="font-size:13px;line-height:1.9;color:var(--text);">
+        <b>💬 Allgemein:</b> „Wie wird das Wetter in Zürich?“ · „Wechsel den Kurs zu Franken“ · „Navigiere nach Bern“<br>
+        <b>🏠 Smart Home:</b> „Mach das Licht im Wohnzimmer an“ · „Es soll gemütlich werden“<br>
+        <b>🎵 Musik:</b> „Spiel [Song]“ · „Pause“ · „Nächster Song“ · „Lauter/Leiser“<br>
+        <b>📈 Trading:</b> Portfolio hinzufügen, Stop-Loss/Take-Profit setzen<br>
+        <b>🛒 Dropshipping:</b> „Erstell mir einen Webshop für …“<br>
+        <b>🌐 Website:</b> „Erstell mir eine Website für …“<br>
+        <b>⚡ Wake-Word:</b> „Jarvis, …“ startet ein Gespräch, ohne Knopf zu drücken<br>
+        <b>🎙️ Live-Gespräch:</b> Button aktivieren, dann einfach normal weiterreden
+      </div>
+      <button class="close" style="width:100%;margin-top:16px;" onclick="el('#helpOverlay').style.display='none';">Schliessen</button>
+    </div>
+  </div>
   <!-- Boot-Startbildschirm -->
   <div id="boot">
     <div id="bootReactor"><span class="r3"></span></div>
@@ -575,6 +609,7 @@
     <div class="sidefoot">
       <div class="wakebtn" id="wakeBtn" onclick="toggleWake()">⚡ Wake-Word</div>
       <div class="livebtn" id="liveBtn" onclick="toggleLive()">🎙️ Live-Gespräch</div>
+      <div class="navbtn" onclick="el('#helpOverlay').style.display='flex';"><span class="ic">❓</span> Befehle</div>
       <div class="navbtn" onclick="openSettings()"><span class="ic">⚙️</span> Einstellungen</div>
       <div class="status offline" id="status" onclick="openSettings()">● Einrichten</div>
     </div>
@@ -1173,6 +1208,18 @@
       <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">🩺 Gesundheitscheck</h2>
+      <p>Prüft auf einen Klick, ob API-Key, Smart Home, Spotify & Co. richtig verbunden sind.</p>
+      <button class="close" style="width:100%;" onclick="runHealthCheck()">🩺 Jetzt prüfen</button>
+      <div id="healthResult" style="font-size:12px;line-height:1.8;margin-top:10px;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">☁️ Backup</h2>
+      <p>Sicherungen liegen nur in diesem Browser. Regelmässig exportieren oder in die Zwischenablage kopieren, z.B. um es dir selbst zu mailen oder in einer Notiz-App zu speichern.</p>
+      <button class="close" style="width:100%;" onclick="copySettingsToClipboard()">📋 In Zwischenablage kopieren</button>
+      <div id="backupStatus" style="font-size:12px;color:var(--muted);margin-top:6px;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
       <h2 style="font-size:16px;">🧩 Module</h2>
       <p>Bereiche, die du nicht brauchst, kannst du ausblenden – weniger Chaos im Menü. Jederzeit wieder anschaltbar.</p>
       <div id="moduleList"></div>
@@ -1204,6 +1251,63 @@
   </div>
 
 <script>
+// ---- Onboarding: nur beim allerersten Start zeigen ----
+function closeOnboarding(){ el('#onboardOverlay').style.display='none'; localStorage.setItem('jarvis_onboarded','true'); }
+if(!localStorage.getItem('jarvis_onboarded')){
+  setTimeout(()=>{ el('#onboardOverlay').style.display='flex'; }, 1800);
+}
+
+// ---- Offline-Erkennung ----
+function updateOfflineBanner(){ el('#offlineBanner').style.display = navigator.onLine ? 'none' : 'block'; }
+window.addEventListener('online', updateOfflineBanner);
+window.addEventListener('offline', updateOfflineBanner);
+updateOfflineBanner();
+
+// ---- Update-Check: prüft alle paar Minuten, ob eine neuere Version online ist ----
+async function checkForUpdate(){
+  if(!navigator.onLine) return;
+  try{
+    const res = await fetch(location.pathname + '?_=' + Date.now(), { cache:'no-store' });
+    const txt = await res.text();
+    const m = txt.match(/JARVIS_VERSION\s*=\s*'([^']+)'/);
+    if(m && m[1] !== JARVIS_VERSION) el('#updateBanner').style.display = 'block';
+  } catch(e){ /* offline oder Sandbox - einfach ignorieren */ }
+}
+setInterval(checkForUpdate, 10*60*1000);
+setTimeout(checkForUpdate, 15000);
+
+// ---- Gesundheitscheck ----
+async function runHealthCheck(){
+  const box = el('#healthResult'); box.innerHTML = '⏳ Prüfe…';
+  const lines = [];
+  lines.push(navigator.onLine ? '✅ Internet verbunden' : '❌ Kein Internet');
+  if(apiKey){
+    try{
+      const r = await fetch('https://api.anthropic.com/v1/messages', { method:'POST',
+        headers:{ 'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true' },
+        body: JSON.stringify({ model, max_tokens:1, messages:[{role:'user',content:'hi'}] }) });
+      lines.push(r.ok || r.status===200 ? '✅ Claude API-Key funktioniert' : (r.status===401 ? '❌ API-Key ungültig' : '⚠️ API antwortet mit Status '+r.status));
+    } catch(e){ lines.push('❌ Claude API nicht erreichbar'); }
+  } else lines.push('⚠️ Kein API-Key eingetragen');
+  if(haToken && haUrl){
+    try{ await haFetch('/api/'); lines.push('✅ Home Assistant verbunden ('+Object.keys(haEntities).length+' Geräte)'); }
+    catch(e){ lines.push('❌ Home Assistant nicht erreichbar'); }
+  } else lines.push('⚪ Home Assistant nicht eingerichtet');
+  lines.push(spToken ? '✅ Spotify verbunden' : '⚪ Spotify nicht verbunden');
+  lines.push(useWhisper ? (whisperPipe ? '✅ Whisper geladen' : '⚠️ Whisper aktiviert, aber noch nicht geladen') : '⚪ Whisper (bessere Spracherkennung) aus');
+  lines.push((manualCams && manualCams.length) ? '✅ '+manualCams.length+' manuelle Kamera(s)' : '⚪ Keine manuellen Kameras');
+  box.innerHTML = lines.join('<br>');
+}
+
+// ---- Backup: Einstellungen in die Zwischenablage kopieren ----
+async function copySettingsToClipboard(){
+  const status = el('#backupStatus');
+  try{
+    await navigator.clipboard.writeText(JSON.stringify(collectSnapshotData(), null, 2));
+    status.textContent = '✅ Kopiert! Jetzt irgendwo einfügen (Notiz, Mail an dich selbst, …).';
+  } catch(e){ status.textContent = '❌ Kopieren nicht möglich – nutze stattdessen "Einstellungen exportieren".'; }
+}
+
 const orb = document.getElementById('orb');
 const orbBig = document.getElementById('orbBig');
 // Grosser Orb rechts mittig übernimmt automatisch dieselben Zustands-Klassen wie der kleine
@@ -5194,7 +5298,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.1 · Modulsystem – Bereiche an/ausschaltbar';
+const JARVIS_VERSION = 'v8.2 · Onboarding, Offline/Update-Hinweis, Befehle, Gesundheitscheck, Backup';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
