@@ -1173,6 +1173,11 @@
       <div id="faceStatus" style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;"></div>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">🧩 Module</h2>
+      <p>Bereiche, die du nicht brauchst, kannst du ausblenden – weniger Chaos im Menü. Jederzeit wieder anschaltbar.</p>
+      <div id="moduleList"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
       <h2 style="font-size:16px;">🔄 Rollback / Sicherungspunkte</h2>
       <p>Vor jedem Speichern wird automatisch ein Sicherungspunkt angelegt. Wenn mal was kaputt geht, einfach zu einem älteren Stand zurückspringen.</p>
       <div id="snapshotList" style="max-height:200px;overflow:auto;margin-bottom:8px;"></div>
@@ -1460,6 +1465,43 @@ function el(sel, root=document){ return root.querySelector(sel); }
 function chatBox(view){ return document.getElementById('chat-'+view); }
 function inputBox(view){ return el('[data-input]', document.getElementById('view-'+view)); }
 
+// ---- Modulsystem: Bereiche einzeln an-/ausschaltbar, neue Bereiche einfach hier eintragen ----
+const MODULES = [
+  { id:'home',       label:'Smart Home',        icon:'🏠' },
+  { id:'trading',    label:'Trading',           icon:'📈' },
+  { id:'money',      label:'Geld verdienen',    icon:'💰' },
+  { id:'shop',       label:'Dropshipping',      icon:'🛒' },
+  { id:'research',   label:'Produktrecherche',  icon:'🔍' },
+  { id:'marketing',  label:'Marketing',         icon:'📣' },
+  { id:'tasksagent', label:'Aufgaben',          icon:'✅' },
+  { id:'security',   label:'Sicherheit',        icon:'🛡️' },
+  { id:'website',    label:'Website bauen',     icon:'🌐' },
+  { id:'nav',        label:'Navigation',        icon:'🗺️' }
+];
+let moduleState = {};
+try{ moduleState = JSON.parse(localStorage.getItem('jarvis_modules')||'{}'); } catch(e){ moduleState = {}; }
+function isModuleOn(id){ return moduleState[id] !== false; }
+function toggleModule(id, on){
+  moduleState[id] = on;
+  localStorage.setItem('jarvis_modules', JSON.stringify(moduleState));
+  applyModuleVisibility();
+  if(!on && currentView===id) switchView('chat');
+}
+function applyModuleVisibility(){
+  MODULES.forEach(m=>{
+    const btn = document.querySelector('.navbtn[data-view="'+m.id+'"]');
+    if(btn) btn.style.display = isModuleOn(m.id) ? '' : 'none';
+  });
+}
+function renderModuleToggles(){
+  const box = el('#moduleList'); if(!box) return;
+  box.innerHTML = MODULES.map(m=>
+    '<label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:5px 0;">'+
+      '<input type="checkbox" style="width:18px;height:18px;" '+(isModuleOn(m.id)?'checked':'')+' onchange="toggleModule(\''+m.id+'\', this.checked)">'+
+      m.icon+' '+m.label+
+    '</label>'
+  ).join('');
+}
 function switchView(view){
   if(view !== currentView) sfxSwitch();
   currentView = view;
@@ -3537,6 +3579,7 @@ function openSettings(){
   populateVoices();
   renderBugLog();
   renderSnapshots();
+  renderModuleToggles();
   el('#overlay').classList.add('show');
 }
 function closeSettings(){ el('#overlay').classList.remove('show'); }
@@ -5151,7 +5194,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.0 · Rollback-System für Einstellungen';
+const JARVIS_VERSION = 'v8.1 · Modulsystem – Bereiche an/ausschaltbar';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
@@ -5172,7 +5215,7 @@ const JARVIS_VERSION = 'v8.0 · Rollback-System für Einstellungen';
 })();
 
 // ---- Start ----
-buildDial(); renderHome(); renderScenes(); updateStatus();
+buildDial(); renderHome(); renderScenes(); updateStatus(); applyModuleVisibility();
 window.addEventListener('resize', ()=>{ layoutDial(); });   // Wähler an Bildschirmgrösse anpassen
 setTimeout(layoutDial, 300);   // nach Layout/Boot sauber positionieren
 updateClock(); setInterval(updateClock, 1000); initWeather(); renderTasks(); renderRoutines(); renderChips(); renderDash();
