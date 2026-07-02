@@ -1515,7 +1515,7 @@ async function callClaudeStream(body, extraHeaders, onDelta){
   }
   return full;
 }
-async function askClaude(view, userText, onDelta){
+async function askClaude(view, userText, onDelta, onStatus){
   const hist = histories[view];
   hist.push({ role:'user', content:userText });
   let sys = (typeof PROMPTS[view]==='function') ? PROMPTS[view]() : PROMPTS[view];
@@ -1541,6 +1541,20 @@ async function askClaude(view, userText, onDelta){
         required:['entity_id','state'] } } }, required:['actions'] } });
   }
   const isWebsite = view==='website';
+  // Zwei-Agenten-Vorgehen fürs Website-/Shop-Bauen: erst plant ein kleiner Planungs-Agent kurz
+  // (Seiten/Funktionen/Stil), dann baut der Haupt-Agent GENAU danach - weniger halbfertige/kaputte Seiten.
+  if(isWebsite){
+    if(onStatus) onStatus('Planungs-Agent überlegt sich Seiten & Funktionen…');
+    try{
+      const planSys = 'Du bist ein Planungs-Agent für Website-/Webshop-Bau. Antworte NUR mit einer kurzen Stichpunktliste (max. 8 Punkte): welche Seiten/Sektionen, welche Kernfunktionen, welcher Stil/Farben. KEIN Code, KEIN Fließtext drumherum, keine Einleitung.';
+      const planData = await callClaude({ model: model, max_tokens: 400, system: planSys, messages:[{ role:'user', content:userText }] });
+      const planNote = (planData.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+      if(planNote){
+        sys += '\n\nEin interner Planungs-Agent hat für diesen Auftrag folgenden Plan erstellt – halte dich strikt daran und baue GENAU danach die Seite:\n'+planNote;
+        if(onStatus) onStatus('Baue die Seite nach Plan…');
+      }
+    } catch(e){ /* Planungsschritt ist optional - bei Fehler einfach ohne Plan weiterbauen */ }
+  }
   const base = { model: model, max_tokens: (isWebsite ? 24000 : 1500), system: sys };
   if(tools.length) base.tools = tools;
   // Website-Seiten (Mehrseiten-Navigation + Bilder) brauchen deutlich mehr Ausgabe-Platz als das normale
@@ -1611,7 +1625,10 @@ async function respond(view, q){
       if(!liveWrap){ liveWrap = addMsg(view, full, 'jarvis'); liveBody = liveWrap.querySelector('div:last-child'); }
       else { liveBody.innerHTML = formatText(full); chatBox(view).scrollTop = chatBox(view).scrollHeight; }
     };
-    const answer = await askClaude(view, q, onDelta);
+    const onStatus = (view==='website') ? (msg)=>{
+      t.innerHTML = '<div style="opacity:.7;font-size:.85em;margin-bottom:4px">🤖 '+msg+'</div><div class="typing"><span></span><span></span><span></span></div>';
+    } : null;
+    const answer = await askClaude(view, q, onDelta, onStatus);
     if(!started){ t.remove(); sfxReceive(); }
     const shown = (view==='website') ? websiteHandleAnswer(answer) : answer;
     if(liveWrap){ liveBody.innerHTML = formatText(shown); liveWrap.onclick=(e)=>{ if(e.target.tagName!=='A') speak(shown); }; }
@@ -5010,7 +5027,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.6 · Webshop-Erstellung erkannt';
+const JARVIS_VERSION = 'v7.7 · Planungs-Agent vor Website-Bau';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
