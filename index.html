@@ -1218,20 +1218,52 @@ function orbMood(kind, ms){
 let bugLog = [];
 try{ bugLog = JSON.parse(localStorage.getItem('jarvis_buglog')||'[]'); } catch(e){ bugLog = []; }
 let lastAction = 'App gestartet';
+let html2canvasLoading = null;
+function loadHtml2Canvas(){
+  if(window.html2canvas) return Promise.resolve();
+  if(html2canvasLoading) return html2canvasLoading;
+  html2canvasLoading = new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  return html2canvasLoading;
+}
+async function captureScreenshot(){
+  try{
+    await loadHtml2Canvas();
+    const canvas = await html2canvas(document.body, { scale:0.5, logging:false, backgroundColor:'#0a0e17' });
+    return canvas.toDataURL('image/jpeg', 0.55);
+  } catch(e){ return null; }
+}
 function logBug(msg, action){
-  bugLog.unshift({ time: new Date().toLocaleString('de-CH'), screen: (typeof currentView!=='undefined' && currentView) || '?', action: action || lastAction, error: String(msg||'').slice(0,500) });
+  const entry = { time: new Date().toLocaleString('de-CH'), screen: (typeof currentView!=='undefined' && currentView) || '?', action: action || lastAction, error: String(msg||'').slice(0,500), shot: null };
+  bugLog.unshift(entry);
   if(bugLog.length > 50) bugLog.length = 50;
   try{ localStorage.setItem('jarvis_buglog', JSON.stringify(bugLog)); } catch(e){}
   renderBugLog();
+  // Screenshot läuft im Hintergrund nach - blockiert die Fehleranzeige nicht.
+  captureScreenshot().then(shot=>{
+    if(!shot) return;
+    entry.shot = shot;
+    try{ localStorage.setItem('jarvis_buglog', JSON.stringify(bugLog)); } catch(e){ bugLog.forEach(b=>{ if(b!==entry) b.shot=null; }); try{ localStorage.setItem('jarvis_buglog', JSON.stringify(bugLog)); }catch(e2){} }
+    renderBugLog();
+  });
+}
+function openBugShot(i){
+  const b = bugLog[i]; if(!b || !b.shot) return;
+  const w = window.open(); if(w) w.document.write('<img src="'+b.shot+'" style="max-width:100%">');
 }
 function renderBugLog(){
   const box = el('#bugLogList'); if(!box) return;
   if(!bugLog.length){ box.innerHTML = '<span style="color:var(--muted)">Keine Fehler bisher. 🎉</span>'; return; }
-  box.innerHTML = bugLog.map(b=>
+  box.innerHTML = bugLog.map((b,i)=>
     '<div style="padding:6px 0;border-bottom:1px solid var(--border);">'+
       '<b>🕒 '+b.time+'</b> · 📍 '+b.screen+'<br>'+
       '<span style="color:var(--muted)">Aktion: '+b.action+'</span><br>'+
-      '<span style="color:#ff6b6b">Fehler: '+b.error+'</span>'+
+      '<span style="color:#ff6b6b">Fehler: '+b.error+'</span><br>'+
+      (b.shot ? '<img src="'+b.shot+'" onclick="openBugShot('+i+')" style="max-width:100px;border-radius:6px;margin-top:4px;cursor:pointer;border:1px solid var(--border);" title="Klick für groß">' : '<span style="color:var(--muted);font-size:11px;">📷 kein Screenshot</span>')+
     '</div>'
   ).join('');
 }
@@ -5069,7 +5101,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.8 · Bug-Log mit Uhrzeit, Screen & Aktion';
+const JARVIS_VERSION = 'v7.9 · Bug-Log jetzt mit Screenshot';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
