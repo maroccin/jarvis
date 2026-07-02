@@ -595,7 +595,6 @@
       <div class="navbtn active" data-view="chat" onclick="switchView('chat')"><span class="ic">💬</span> Assistent</div>
       <div class="navbtn" data-view="home" onclick="switchView('home')"><span class="ic">🏠</span> Smart Home</div>
       <div class="navbtn" data-view="trading" onclick="switchView('trading')"><span class="ic">📈</span> Trading</div>
-      <div class="navbtn" data-view="money" onclick="switchView('money')"><span class="ic">💰</span> Geld verdienen</div>
       <div class="navbtn" data-view="shop" onclick="switchView('shop')"><span class="ic">🛒</span> Dropshipping</div>
       <div class="navbtn" data-view="research" onclick="switchView('research')"><span class="ic">🔍</span> Produktrecherche</div>
       <div class="navbtn" data-view="marketing" onclick="switchView('marketing')"><span class="ic">📣</span> Marketing</div>
@@ -1573,7 +1572,6 @@ function inputBox(view){ return el('[data-input]', document.getElementById('view
 const MODULES = [
   { id:'home',       label:'Smart Home',        icon:'🏠' },
   { id:'trading',    label:'Trading',           icon:'📈' },
-  { id:'money',      label:'Geld verdienen',    icon:'💰' },
   { id:'shop',       label:'Dropshipping',      icon:'🛒' },
   { id:'research',   label:'Produktrecherche',  icon:'🔍' },
   { id:'marketing',  label:'Marketing',         icon:'📣' },
@@ -1622,7 +1620,6 @@ const CATS = [
   {view:'chat',    icon:'💬', label:'Assistent'},
   {view:'home',    icon:'🏠', label:'Smart Home'},
   {view:'trading', icon:'📈', label:'Trading'},
-  {view:'money',   icon:'💰', label:'Geld'},
   {view:'shop',    icon:'🛒', label:'Dropshipping'}
 ];
 let dialActive = 0, dialRot = 0, dialMoved = false;
@@ -3115,7 +3112,6 @@ function matchNav(low){
   const targets = [
     {view:'trading', label:'Trading',        re:/trading|aktie|börse|boerse|trade/},
     {view:'home',    label:'Smart Home',     re:/smart\s?home|zuhause|zu hause|haus|geräte|geraete/},
-    {view:'money',   label:'Geld verdienen', re:/geld|verdien/},
     {view:'shop',    label:'Dropshipping',   re:/dropshipping|shop|laden/},
     {view:'chat',    label:'Assistent',      re:/assistent|chat|haupt|start/}
   ];
@@ -5298,7 +5294,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v8.2 · Onboarding, Offline/Update-Hinweis, Befehle, Gesundheitscheck, Backup';
+const JARVIS_VERSION = 'v8.3 · Kategorie "Geld verdienen" entfernt';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
