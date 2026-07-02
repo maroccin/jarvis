@@ -3861,7 +3861,7 @@ function matchWebsiteCmd(low){
   // Bombensicher & tippfehlertolerant: sobald ein Website-Wort vorkommt, zum Website-Agenten leiten.
   // (Deckt "ersttele eion website", "mach mir ne homepage", "webseite bauen" usw. ab, egal welche Verben/Tippfehler.)
   // Ausnahme: reine Wissensfragen ("was ist eine website") sollen im normalen Chat bleiben.
-  if(!/\b(web-?seiten?|web-?sites?|homepages?|landing\s?pages?)\b/.test(low)) return false;
+  if(!/\b(web-?seiten?|web-?sites?|homepages?|landing\s?pages?|web-?shops?|online-?shops?|shop-?systeme?)\b/.test(low)) return false;
   if(/^\s*(was ist|was sind|wie funktioniert|erkl[äa]r|definition)/.test(low)) return false;
   return true;
 }
@@ -5010,7 +5010,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.5 · Live-Streaming der Antworten';
+const JARVIS_VERSION = 'v7.6 · Webshop-Erstellung erkannt';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
