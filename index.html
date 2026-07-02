@@ -500,6 +500,7 @@
     animation: bootpulse 1.6s ease-in-out infinite;
   }
   @keyframes bootpulse { 0%,100%{transform:scale(1);filter:brightness(1);} 50%{transform:scale(1.05);filter:brightness(1.25);} }
+  @keyframes navBtnPulse { 0%,100%{transform:translateX(-50%) scale(1);} 50%{transform:translateX(-50%) scale(1.06);} }
   #bootReactor::before, #bootReactor::after, #bootReactor .r3 { content:""; position:absolute; border-radius:50%; }
   #bootReactor::before { inset:-18px; border:2px solid transparent; border-top-color:var(--cyan); border-right-color:rgba(95,240,255,0.4); animation: spin 3s linear infinite; }
   #bootReactor::after { inset:-36px; border:2px solid transparent; border-bottom-color:var(--blue); border-left-color:rgba(53,200,255,0.3); animation: spin 5s linear infinite reverse; }
@@ -603,7 +604,7 @@
     </div>
 
     <!-- Grosser „Navigation starten"-Knopf (erscheint wenn Route berechnet, wie Google Maps „Los") -->
-    <button id="navStartBtn" onclick="navStart()" style="display:none;position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:9990;padding:17px 40px;border-radius:32px;border:none;background:linear-gradient(90deg,#0a84ff,#35c8ff);color:#fff;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 8px 28px rgba(10,132,255,0.65);white-space:nowrap;">🚗 Navigation starten</button>
+    <button id="navStartBtn" onclick="navBtnClick()" style="display:none;position:fixed;left:50%;bottom:34px;transform:translateX(-50%);z-index:9990;padding:17px 40px;border-radius:32px;border:none;background:linear-gradient(90deg,#0a84ff,#35c8ff);color:#fff;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 8px 28px rgba(10,132,255,0.65);white-space:nowrap;animation:navBtnPulse 1.8s ease-in-out infinite;">🚗 Navigation starten</button>
 
     <!-- Abbiegeliste (schwebt unten, ausklappbare Leiste) -->
     <div id="navSteps" style="display:none;position:absolute;left:0;right:0;bottom:0;z-index:5;max-height:38%;overflow-y:auto;background:var(--card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,0.35);"></div>
@@ -3395,16 +3396,21 @@ function navStop(arrived){
   navSteps = []; navStepIdx = 0; navWarned = {};
   navDemoStop();
   const b=el('#navBanner'); if(b) b.style.display='none';
-  const sb=el('#navStartBtn'); if(sb) sb.style.display='none';
+  const sb=el('#navStartBtn'); if(sb){ sb.style.display='none'; sb.style.animation='navBtnPulse 1.8s ease-in-out infinite'; sb.textContent='🚗 Navigation starten'; }
   navRenderSteps();
   navUpdateChrome();
   if(!arrived) el('#navInfo').textContent = 'Navigation beendet.';
 }
 
+// Knopf-Klick: beim ersten Mal Navigation starten, danach nur noch neu zentrieren
+// (setzt den Fortschritt NICHT zurück, falls man während der Fahrt weggescrollt hat).
+function navBtnClick(){
+  if(navActive) navLocate(); else navStart();
+}
 // Navigation wirklich starten (wie Google/Apple Maps „Los"): 3D-Fahransicht, auf Startpunkt zentrieren, losführen
 function navStart(){
   if(!navSteps.length){ return; }
-  const sb = el('#navStartBtn'); if(sb) sb.style.display = 'none';
+  const sb = el('#navStartBtn'); if(sb){ sb.style.animation='none'; sb.textContent='🎯 Neu zentrieren'; }
   navActive = true; navFollow = true; navPrevPos = null; navStepIdx = 0; navWarned = {};
   navBannerSet(navSteps[0].icon, '', navSteps[0].text);
   // Auf den Startpunkt zentrieren und in die 3D-Schräglage gehen
@@ -3500,12 +3506,15 @@ async function navRouteTo(destination){
         navStepIdx = 0; navWarned = {};
         navRenderSteps();
         if(navSteps.length){
-          // Route zuerst als Übersicht zeigen (flach von oben) + Start-Knopf einblenden.
-          // Erst auf „Navigation starten" geht's in die 3D-Fahransicht los (wie Google/Apple Maps).
+          // Route zuerst kurz als Übersicht zeigen (flach von oben), dann AUTOMATISCH in die
+          // 3D-Fahransicht starten - kein Extra-Klick mehr nötig (der Start-Knopf blieb bisher
+          // oft unbemerkt). Der Knopf bleibt trotzdem sichtbar, um jederzeit manuell neu zu
+          // zentrieren, falls man während der Fahrt weggescrollt hat.
           navActive = false; navFollow = false; navPrevPos = null;
           navMap.fitBounds(navRouteBounds(),{padding:50, pitch:0, bearing:0, duration:800});
           const sb = el('#navStartBtn'); if(sb) sb.style.display = 'block';
-          speak('Route nach '+destName+' berechnet. '+dist+' Kilometer, etwa '+mins+' Minuten. Tippe auf Navigation starten.');
+          speak('Route nach '+destName+' berechnet. '+dist+' Kilometer, etwa '+mins+' Minuten. Ich starte die Navigation.');
+          setTimeout(()=>{ if(!navActive) navStart(); }, 2500);
         }
         return;
       }
@@ -4628,7 +4637,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.3 · Website-Datei-Fix (html-Rest entfernt)';
+const JARVIS_VERSION = 'v6.4 · Navigation startet automatisch';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
