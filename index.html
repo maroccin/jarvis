@@ -1528,18 +1528,28 @@ async function respond(view, q){
 
 // ---- Website-Agent: erkennt generierten HTML-Code, zeigt Live-Vorschau + Download ----
 let websiteHTML = '';
+// Entfernt Reste der Codeblock-Markierung aus dem extrahierten HTML.
+// Charlie schreibt die Sprachmarkierung mal als "```html", mal als "``` html" oder auf eigener
+// Zeile - rutschte sie mit in die Datei, begann diese mit dem Wort "html" und war kaputt.
+function websiteCleanCode(code){
+  code = code.trim();
+  code = code.replace(/^html\s*/i, '');              // führende Sprachmarkierung
+  const start = code.search(/<!DOCTYPE|<html/i);      // alles vor dem echten Dokumentbeginn abschneiden
+  if(start > 0) code = code.slice(start);
+  return code.trim();
+}
 function websiteHandleAnswer(answer){
   // Normalfall: sauber geschlossener Codeblock
-  let m = answer.match(/```(?:html)?\s*([\s\S]*?)```/i);
+  let m = answer.match(/```[^\S\n]*(?:html)?\s*([\s\S]*?)```/i);
   let truncated = false;
   if(!m){
     // Antwort wurde mitten im Code abgeschnitten (Token-Limit erreicht) -> nimm alles ab dem Codeblock-Start,
     // besser eine unvollständige Vorschau zeigen als rohen Code im Chat zu dumpen.
-    const open = answer.match(/```(?:html)?\s*([\s\S]*)$/i);
+    const open = answer.match(/```[^\S\n]*(?:html)?\s*([\s\S]*)$/i);
     if(!open || open[1].trim().length < 20) return answer;   // wirklich keine Website erkennbar (z.B. Rückfrage)
     m = open; truncated = true;
   }
-  websiteHTML = m[1].trim();
+  websiteHTML = websiteCleanCode(m[1]);
   const frame = el('#websitePreview');
   if(frame) frame.srcdoc = websiteHTML;
   const dl = el('#websiteDownloadBar'); if(dl) dl.style.display = 'flex';
@@ -4618,7 +4628,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.2 · Auto-Modus-Timer-Leck behoben';
+const JARVIS_VERSION = 'v6.3 · Website-Datei-Fix (html-Rest entfernt)';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
