@@ -703,8 +703,10 @@
       <div class="bar">
         <button class="btn mic" data-mic onclick="toggleMic('chat')">🎤</button>
         <button class="btn" onclick="openImagePicker()" title="Bild hochladen & analysieren">🖼️</button>
+        <button class="btn" onclick="openVideoPicker()" title="Video hochladen & analysieren">🎬</button>
         <button class="btn" onclick="openDocPicker()" title="Dokument/Text hochladen & lesen">📄</button>
         <input id="imgFileInput" type="file" accept="image/*" style="display:none" onchange="analyzeImage(this)">
+        <input id="vidFileInput" type="file" accept="video/*" style="display:none" onchange="analyzeVideo(this)">
         <input id="docFileInput" type="file" accept=".txt,.md,.csv,.json,.html,.js,.py,.pdf" style="display:none" onchange="analyzeDoc(this)">
         <input data-input placeholder="Frag Jarvis etwas…" onkeydown="if(event.key==='Enter')send('chat')">
         <button class="btn sendb" onclick="send('chat')">➤</button>
@@ -4667,6 +4669,63 @@ async function analyzeImage(input){
   reader.readAsDataURL(file);
 }
 
+function openVideoPicker(){
+  const q = el('#vidFileInput');
+  if(q){ q.value=''; q.click(); }
+}
+// Claude kann keine Videos direkt verarbeiten - stattdessen zieht der Browser mehrere
+// gleichmässig verteilte Einzelbilder aus dem Video und schickt sie als geordnete Sequenz
+// an Claude, damit er den zeitlichen Ablauf versteht (funktioniert erstaunlich gut für
+// "was passiert in diesem Video", Ablauf-Beschreibungen, erkennbare Objekte/Personen etc.)
+async function extractVideoFrames(file, count){
+  return new Promise((resolve, reject)=>{
+    const video = document.createElement('video');
+    video.preload = 'metadata'; video.muted = true; video.playsInline = true;
+    video.src = URL.createObjectURL(file);
+    video.onloadedmetadata = async ()=>{
+      const dur = video.duration;
+      if(!isFinite(dur) || dur<=0){ reject(new Error('Videolänge konnte nicht gelesen werden.')); return; }
+      const canvas = document.createElement('canvas');
+      const maxW = 768;
+      canvas.width = Math.min(maxW, video.videoWidth||maxW);
+      canvas.height = Math.round(canvas.width * ((video.videoHeight||9)/(video.videoWidth||16)));
+      const ctx = canvas.getContext('2d');
+      const frames = [];
+      const seekTo = (t)=> new Promise(res=>{ video.onseeked = ()=>res(); video.currentTime = t; });
+      for(let i=0;i<count;i++){
+        const t = (dur * (i+0.5)) / count;   // gleichmässig über die Dauer verteilt, Mitte jedes Abschnitts
+        await seekTo(Math.min(t, Math.max(0, dur-0.05)));
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        frames.push(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
+      }
+      URL.revokeObjectURL(video.src);
+      resolve({ frames, duration: dur });
+    };
+    video.onerror = ()=>reject(new Error('Video konnte nicht gelesen werden (Format nicht unterstützt?).'));
+  });
+}
+async function analyzeVideo(input){
+  const file = input.files[0]; if(!file) return;
+  if(!apiKey){ addMsg('chat','⚠️ Bitte zuerst Claude API Key in Einstellungen eingeben.','jarvis'); return; }
+  switchView('chat');
+  const question = prompt('Was soll ich zu diesem Video analysieren?\n(leer lassen = allgemeine Beschreibung des Ablaufs)') || 'Beschreibe, was in diesem Video passiert - der Ablauf, was zu sehen ist, was auffällt.';
+  const wrap = addMsg('chat','🎬 *Extrahiere Bilder aus dem Video…*','jarvis');
+  try{
+    const FRAME_COUNT = 8;
+    const { frames, duration } = await extractVideoFrames(file, FRAME_COUNT);
+    wrap.lastElementChild.innerHTML = formatText('🎬 *Analysiere '+frames.length+' Ausschnitte ('+Math.round(duration)+'s Video)…*');
+    const content = [
+      { type:'text', text: 'Das sind '+frames.length+' gleichmässig über ein '+Math.round(duration)+' Sekunden langes Video verteilte Einzelbilder, in zeitlicher Reihenfolge (erstes Bild = Anfang, letztes = Ende). Beurteile daraus den Ablauf/Inhalt.' },
+      ...frames.map(b64=>({ type:'image', source:{ type:'base64', media_type:'image/jpeg', data:b64 } })),
+      { type:'text', text: question }
+    ];
+    const d = await callClaude({ model:'claude-sonnet-4-6', max_tokens:1024, messages:[{role:'user', content}] });
+    const txt = d.content?.[0]?.text || 'Keine Antwort erhalten.';
+    wrap.lastElementChild.innerHTML = formatText(txt);
+    if(speakOn) speak(txt.slice(0,200));
+  }catch(err){ wrap.lastElementChild.innerHTML = formatText('❌ Fehler: '+err.message); }
+}
+
 function shopNischeFinds(){
   switchView('shop');
   ask('shop','Zeig mir 6 profitable Dropshipping-Nischen für 2026 – jede mit: Nischen-Name, Warum jetzt gut, Zielgruppe, Beispielprodukt, Einkaufspreis ca., Verkaufspreis ca., Marge in %. Formatiere es als übersichtliche Liste. Frag mich danach, welche mir gefällt, damit wir den kompletten Shop-Plan erstellen.');
@@ -4815,7 +4874,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v6.9 · Whisper bricht nicht mehr mitten im Satz ab';
+const JARVIS_VERSION = 'v7.0 · Video-Analyse hinzugefügt';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
