@@ -1114,6 +1114,16 @@
       <div id="haStatus" style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.4;"></div>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+      <h2 style="font-size:16px;">📷 Kamera per URL hinzufügen</h2>
+      <p>Ohne Home Assistant: IP-Kamera, Überwachungskamera oder Snapshot-URL direkt eintragen. Die Adresse liefert dein Kamera-Hersteller/-App (meist etwas wie <code style="font-size:11px;">http://192.168.1.50/snapshot.jpg</code> oder eine MJPEG-Stream-URL).</p>
+      <label>Name</label>
+      <input id="camNameInput" placeholder="z.B. Eingang, Wohnzimmer">
+      <label>Bild-/Stream-URL</label>
+      <input id="camUrlInput" placeholder="http://…/snapshot.jpg">
+      <button class="save" style="margin-top:10px;width:100%;" onclick="addManualCam()">➕ Kamera hinzufügen</button>
+      <div id="manualCamList" style="margin-top:10px;"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
       <h2 style="font-size:16px;">🎵 Spotify verbinden</h2>
       <p>Damit Jarvis Spotify per Sprache steuert: „Spiele Adele", „Pause", „Nächstes Lied". <b>Spotify Premium erforderlich</b> für Wiedergabe-Steuerung.</p>
       <p style="font-size:12px;color:var(--muted);">Client-ID holen: <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> → App erstellen → Redirect URI: <code id="spRedirectUri" style="user-select:all;cursor:text;"></code></p>
@@ -3238,7 +3248,7 @@ function delRoutine(name){ delete haRoutines[name]; localStorage.setItem('ha_rou
 // Kamera-Live-Bilder laden (mit Token, daher als Blob)
 async function refreshCams(){
   if(document.hidden) return;   // im Hintergrund nicht aktualisieren (spart Akku/Leistung)
-  const imgs = document.querySelectorAll('img.cam'); if(!imgs.length) return;
+  const imgs = document.querySelectorAll('img.cam');
   for(const img of imgs){
     const id = img.dataset.cam;
     try{
@@ -3249,6 +3259,41 @@ async function refreshCams(){
       if(old && old.indexOf('blob:')===0) URL.revokeObjectURL(old);
     }catch(e){}
   }
+  // Direkt per URL hinzugefügte Kameras (kein Home Assistant nötig) - Cache-Buster erzwingt
+  // ein frisches Standbild bei normalen Snapshot-URLs; echte MJPEG-Streams aktualisieren sich
+  // ohnehin selbst innerhalb des <img>, hier stört das nur minimal (kurzer Reconnect).
+  document.querySelectorAll('img.cam-manual').forEach(img=>{
+    const url = img.dataset.url; if(!url) return;
+    const sep = url.includes('?') ? '&' : '?';
+    img.src = url + sep + '_t=' + Date.now();
+  });
+}
+
+// ---- Kamera direkt per URL hinzufügen (ohne Home Assistant) ----
+let manualCams = JSON.parse(localStorage.getItem('jarvis_manual_cams')||'[]');
+function saveManualCams(){ localStorage.setItem('jarvis_manual_cams', JSON.stringify(manualCams)); }
+function addManualCam(){
+  const nameEl = el('#camNameInput'), urlEl = el('#camUrlInput');
+  const name = (nameEl?.value||'').trim(), url = (urlEl?.value||'').trim();
+  if(!url) return;
+  manualCams.push({ id:'m'+Date.now(), name: name||'Kamera', url });
+  saveManualCams();
+  if(nameEl) nameEl.value=''; if(urlEl) urlEl.value='';
+  renderManualCamList(); renderCamCard();
+}
+function removeManualCam(id){
+  manualCams = manualCams.filter(c=>c.id!==id);
+  saveManualCams(); renderManualCamList(); renderCamCard();
+}
+function renderManualCamList(){
+  const box = el('#manualCamList'); if(!box) return;
+  if(!manualCams.length){ box.innerHTML='<div style="font-size:12px;color:var(--muted);">Noch keine Kamera hinzugefügt.</div>'; return; }
+  box.innerHTML = manualCams.map(c=>
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border);">'+
+      '<span>📷 '+escHtml(c.name)+'</span>'+
+      '<span onclick="removeManualCam(\''+c.id+'\')" style="color:var(--muted);cursor:pointer;padding:2px 8px;">✕</span>'+
+    '</div>'
+  ).join('');
 }
 // Sprachbefehl auf HA-Gerät mappen (per Namens-Überschneidung)
 function matchHA(low){
@@ -3285,6 +3330,7 @@ function updateKeyCheck(){
 function openSettings(){
   if(el('#whisperInput')) el('#whisperInput').checked = useWhisper;
   if(el('#whisperStatus') && whisperPipe) el('#whisperStatus').textContent = '✅ Modell geladen und einsatzbereit.';
+  renderManualCamList();
   el('#hueIp').value = hueIp;
   el('#lgIp').value = lgIp;
   el('#haUrl').value = haUrl; el('#haToken').value = haToken;
@@ -4452,9 +4498,12 @@ setInterval(()=>{ if(haToken) haLoad().then(checkSecurityAlerts).catch(()=>{}); 
 function renderCamCard(){
   const box=el('#camBox'), nm=el('#camName'); if(!box) return;
   const ids=Object.keys(haEntities).filter(id=>haEntities[id].domain==='camera');
-  if(!ids.length){ box.innerHTML='<div class="dcMuted">Keine Kamera verbunden. Über Home Assistant (⚙️ Einstellungen) hinzufügen.</div>'; if(nm)nm.textContent=''; return; }
-  const id=ids[0]; if(nm) nm.textContent=haEntities[id].name;
-  box.innerHTML='<img class="cam" data-cam="'+id+'" alt="Kamera-Bild">';
+  const total = ids.length + manualCams.length;
+  if(!total){ box.innerHTML='<div class="dcMuted">Keine Kamera verbunden. Über Home Assistant oder direkt per URL (⚙️ Einstellungen) hinzufügen.</div>'; if(nm)nm.textContent=''; return; }
+  if(nm) nm.textContent = total>1 ? total+' Kameras' : (ids.length ? haEntities[ids[0]].name : manualCams[0].name);
+  let html = ids.map(id=>'<img class="cam" data-cam="'+id+'" alt="'+escHtml(haEntities[id].name)+'" title="'+escHtml(haEntities[id].name)+'">').join('');
+  html += manualCams.map(c=>'<img class="cam-manual" data-url="'+escHtml(c.url)+'" alt="'+escHtml(c.name)+'" title="'+escHtml(c.name)+'">').join('');
+  box.innerHTML = html;
   refreshCams();
 }
 function renderDash(){ renderCalendar(); renderAlerts(); renderClimateCard(); renderCamCard(); renderEnergyCard(); renderBatteryCard(); renderPresenceCard(); }
@@ -4874,7 +4923,7 @@ function alarmTimer(){
 // (Hintergrund ist jetzt reines CSS – #bgglow – kein JavaScript nötig, kann den Start nie blockieren)
 
 // ---- Version (zum Prüfen ob neueste Version geladen ist) ----
-const JARVIS_VERSION = 'v7.0 · Video-Analyse hinzugefügt';
+const JARVIS_VERSION = 'v7.1 · Kamera per URL hinzufügen';
 (function(){ const vb=el('#verBadge'); if(vb) vb.textContent = JARVIS_VERSION; })();
 
 // ---- Boot-Startbildschirm ----
